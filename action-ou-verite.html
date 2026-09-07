@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Action ou Vérité</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#F5F5DC;
+    --brown:#A0826D;
+    --brown-dark:#8a6f5c;
+    --avocado:#6B8E23;
+    --avocado-dark:#5a7a1d;
+    --text:#3A3226;
+    --text-light:#6b6152;
+    --danger:#b5533a;
+    --white:#ffffff;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Poppins','Inter',-apple-system,sans-serif;
+    font-size:16px;
+    line-height:1.5;
+  }
+  #app{
+    max-width:800px;
+    margin:0 auto;
+    padding:20px;
+    min-height:100vh;
+  }
+  h1{font-size:32px;font-weight:700;margin:0 0 20px;}
+  h2{font-size:22px;font-weight:600;margin:0 0 16px;}
+  p.small, .small{font-size:12px;color:var(--text-light);}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    border:none;border-radius:8px;padding:12px 20px;color:#fff;
+    font-family:inherit;font-size:16px;font-weight:500;cursor:pointer;
+    transition:transform .08s ease, opacity .15s ease;
+  }
+  .btn:active{transform:scale(0.97);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-nav{background:var(--avocado);}
+  .btn-nav:hover:not(:disabled){background:var(--avocado-dark);}
+  .btn-action{background:var(--brown);}
+  .btn-action:hover:not(:disabled){background:var(--brown-dark);}
+  .btn-danger{background:var(--danger);}
+  .btn-ghost{background:transparent;color:var(--text);border:2px solid var(--avocado);}
+  .btn-block{width:100%;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;}
+  .card{
+    border:2px solid var(--brown);
+    background:var(--white);
+    border-radius:12px;
+    padding:30px;
+    min-height:200px;
+    margin-bottom:20px;
+  }
+  input[type=text], select, textarea{
+    border:2px solid var(--avocado);
+    background:var(--bg);
+    border-radius:8px;
+    padding:10px 12px;
+    font-family:inherit;
+    font-size:16px;
+    color:var(--text);
+    width:100%;
+  }
+  textarea{min-height:140px;resize:vertical;font-family:monospace;font-size:13px;}
+  .list-item{
+    display:flex;justify-content:space-between;align-items:center;
+    background:var(--bg);border-radius:8px;padding:8px 12px;margin-bottom:6px;
+    border:1px solid #e3ddc9;
+  }
+  .list-item button{background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;}
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-weight:500;margin-bottom:6px;}
+  .top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px;}
+  .dashboard-item{
+    display:flex;justify-content:space-between;align-items:center;
+    border:2px solid var(--brown);background:var(--white);border-radius:12px;
+    padding:16px 20px;margin-bottom:14px;flex-wrap:wrap;gap:10px;
+  }
+  .dashboard-item .info h3{margin:0 0 4px;font-size:18px;font-weight:600;}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:768px){.two-col{grid-template-columns:1fr;}}
+  .empty-state{
+    text-align:center;padding:40px 20px;color:var(--text-light);
+    border:2px dashed var(--brown);border-radius:12px;
+  }
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    background:var(--text);color:#fff;padding:12px 20px;border-radius:8px;
+    font-size:14px;opacity:0;transition:opacity .3s ease;z-index:999;
+    max-width:90%;text-align:center;
+  }
+  .toast.show{opacity:1;}
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(58,50,38,0.5);
+    display:flex;align-items:center;justify-content:center;z-index:100;padding:20px;
+  }
+  .modal{
+    background:var(--white);border-radius:12px;padding:24px;max-width:520px;width:100%;
+    max-height:85vh;overflow-y:auto;border:2px solid var(--brown);
+  }
+  .flip-scene{perspective:1200px;margin-bottom:20px;}
+  .flip-card{
+    position:relative;width:100%;min-height:220px;
+    transform-style:preserve-3d;transition:transform 1.5s cubic-bezier(.4,.2,.2,1);
+  }
+  .flip-card.flipped{transform:rotateY(180deg);}
+  .flip-face{
+    position:absolute;inset:0;backface-visibility:hidden;
+    border:2px solid var(--brown);background:var(--white);border-radius:12px;
+    padding:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;
+  }
+  .flip-face.back{transform:rotateY(180deg);}
+  .player-name{font-size:26px;font-weight:700;color:var(--brown-dark);}
+  .question-text{font-size:19px;font-weight:500;line-height:1.5;}
+  .category-tag{
+    display:inline-block;margin-bottom:14px;font-size:12px;font-weight:600;
+    color:var(--avocado-dark);
+  }
+  .fade{animation:fadeIn .4s ease;}
+  @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+  .center{text-align:center;}
+  .stack{display:flex;flex-direction:column;gap:12px;}
+  .qr-box{display:flex;justify-content:center;padding:16px;background:#fff;border-radius:8px;}
+  .link-back{background:none;border:none;color:var(--avocado-dark);font-weight:600;cursor:pointer;font-size:14px;padding:0;}
+  .dup-item{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #e3ddc9;}
+  .dup-item:last-child{border-bottom:none;}
+  .player-input-row{display:flex;gap:8px;margin-bottom:8px;}
+  .player-input-row input{flex:1;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+/* ---------- Constantes & stockage ---------- */
+const LS_LISTS = 'avv.lists';
+const LS_GAME = 'avv.game';
+const QR_LIMIT = 2000;
+
+function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+
+function loadLists(){
+  try{ return JSON.parse(localStorage.getItem(LS_LISTS)) || []; }catch(e){ return []; }
+}
+function saveLists(lists){ localStorage.setItem(LS_LISTS, JSON.stringify(lists)); }
+
+function loadGame(){
+  try{ return JSON.parse(localStorage.getItem(LS_GAME)); }catch(e){ return null; }
+}
+function saveGame(game){
+  if(game) localStorage.setItem(LS_GAME, JSON.stringify(game));
+  else localStorage.removeItem(LS_GAME);
+}
+
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+function showToast(msg, ms=3000){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(()=>t.classList.remove('show'), ms);
+}
+
+/* ---------- État global de l'app (navigation) ---------- */
+let App = {
+  screen: 'dashboard',   // dashboard | edit | config | game | end
+  editingListId: null,   // id de la liste en cours d'édition, ou null = nouvelle
+  draft: null,           // brouillon {name, actions:[], truths:[]} pendant l'édition
+  configPrefill: null,   // pour "changer les joueurs": {listId, sansRemise}
+  dupModal: null,        // état de la modale de fusion JSON
+};
+
+/* ================= RENDU PRINCIPAL ================= */
+function render(){
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  if(App.screen === 'dashboard') renderDashboard(app);
+  else if(App.screen === 'edit') renderEdit(app);
+  else if(App.screen === 'config') renderConfig(app);
+  else if(App.screen === 'game') renderGame(app);
+  else if(App.screen === 'end') renderEnd(app);
+}
+
+function el(tag, opts={}, children=[]){
+  const e = document.createElement(tag);
+  if(opts.class) e.className = opts.class;
+  if(opts.text!==undefined) e.textContent = opts.text;
+  if(opts.html!==undefined) e.innerHTML = opts.html;
+  if(opts.attrs) for(const k in opts.attrs) e.setAttribute(k, opts.attrs[k]);
+  if(opts.on) for(const evt in opts.on) e.addEventListener(evt, opts.on[evt]);
+  if(opts.disabled) e.disabled = true;
+  if(opts.value!==undefined) e.value = opts.value;
+  children.forEach(c=>c && e.appendChild(c));
+  return e;
+}
+
+/* ================= 1. DASHBOARD ================= */
+function renderDashboard(app){
+  const lists = loadLists();
+  app.appendChild(el('div',{class:'top-bar'},[
+    el('h1',{text:'Action ou Vérité'}),
+    el('button',{class:'btn btn-nav',text:'+ Créer une nouvelle liste',on:{click:()=>{
+      App.editingListId = null;
+      App.draft = {name:'', actions:[], truths:[]};
+      App.screen='edit'; render();
+    }}})
+  ]));
+
+  if(lists.length===0){
+    app.appendChild(el('div',{class:'empty-state'},[
+      el('p',{text:"Aucune liste pour l'instant. Crée ta première liste de questions pour commencer."})
+    ]));
+  } else {
+    lists.forEach(list=>{
+      const item = el('div',{class:'dashboard-item'},[
+        el('div',{class:'info'},[
+          el('h3',{text:list.name}),
+          el('p',{class:'small',text:`${list.actions.length} action(s) · ${list.truths.length} vérité(s)`})
+        ]),
+        el('div',{class:'row'},[
+          el('button',{class:'btn btn-nav',text:'Jouer',disabled:(list.actions.length+list.truths.length===0),on:{click:()=>{
+            App.configPrefill = {listId:list.id, sansRemise:false, players:[]};
+            App.screen='config'; render();
+          }}}),
+          el('button',{class:'btn btn-ghost',text:'Modifier',on:{click:()=>{
+            App.editingListId = list.id;
+            App.draft = JSON.parse(JSON.stringify(list));
+            App.screen='edit'; render();
+          }}}),
+          el('button',{class:'btn btn-danger',text:'Supprimer',on:{click:()=>{
+            if(confirm(`Supprimer la liste "${list.name}" ? Cette action est définitive.`)){
+              saveLists(loadLists().filter(l=>l.id!==list.id));
+              render();
+            }
+          }}}),
+        ])
+      ]);
+      app.appendChild(item);
+    });
+  }
+}
+
+/* ================= 2. CREATION / EDITION DE LISTE ================= */
+function renderEdit(app){
+  const d = App.draft;
+  const isNew = App.editingListId===null;
+
+  app.appendChild(el('button',{class:'link-back',text:'← Retour au dashboard',on:{click:()=>{App.screen='dashboard';render();}}}));
+  app.appendChild(el('h1',{text:isNew?'Nouvelle liste':'Modifier la liste'}));
+
+  app.appendChild(el('div',{class:'field'},[
+    el('label',{text:'Nom de la liste'}),
+    el('input',{attrs:{type:'text',placeholder:'Ex : Soirée entre amis'},value:d.name,on:{input:(e)=>{d.name=e.target.value;}}})
+  ]));
+
+  const twoCol = el('div',{class:'two-col'});
+  twoCol.appendChild(buildCategoryEditor('Actions','actions'));
+  twoCol.appendChild(buildCategoryEditor('Vérités','truths'));
+  app.appendChild(twoCol);
+
+  app.appendChild(el('div',{class:'row',attrs:{style:'margin-top:20px;'}},[
+    el('button',{class:'btn btn-ghost',text:'Importer / fusionner via JSON',on:{click:openMergeModal}}),
+    el('button',{class:'btn btn-ghost',text:'Exporter en JSON',on:{click:exportListJSON}}),
+    el('button',{class:'btn btn-ghost',text:'Exporter en QR code',on:{click:openQrModal}}),
+  ]));
+
+  const totalQuestions = d.actions.length + d.truths.length;
+  app.appendChild(el('div',{attrs:{style:'margin-top:24px;'}},[
+    el('button',{class:'btn btn-nav',text:'Enregistrer',disabled:totalQuestions===0,on:{click:()=>{
+      const lists = loadLists();
+      if(isNew){
+        lists.push({id:uid(), name:d.name.trim()||'Liste sans nom', actions:d.actions, truths:d.truths});
+      } else {
+        const idx = lists.findIndex(l=>l.id===App.editingListId);
+        if(idx>=0) lists[idx] = {id:App.editingListId, name:d.name.trim()||'Liste sans nom', actions:d.actions, truths:d.truths};
+      }
+      saveLists(lists);
+      showToast('Liste enregistrée.');
+      App.screen='dashboard'; render();
+    }}})
+  ]));
+  if(totalQuestions===0){
+    app.appendChild(el('p',{class:'small',attrs:{style:'margin-top:8px;'},text:"Ajoute au moins une question (action ou vérité) pour pouvoir enregistrer."}));
+  }
+
+  if(App.dupModal) renderMergeModal(app);
+  if(App.qrModalOpen) renderQrModal(app);
+
+  function buildCategoryEditor(title, key){
+    const wrap = el('div',{class:'card'});
+    wrap.appendChild(el('h2',{text:title}));
+    const inputRow = el('div',{class:'row',attrs:{style:'margin-bottom:14px;'}});
+    const input = el('input',{attrs:{type:'text',placeholder:`Nouvelle ${title.toLowerCase().slice(0,-1)}...`}});
+    input.style.flex='1';
+    const addFn = ()=>{
+      const val = input.value.trim();
+      if(!val) return;
+      d[key].push({id:uid(), text:val});
+      input.value='';
+      render();
+    };
+    input.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); addFn(); } });
+    inputRow.appendChild(input);
+    inputRow.appendChild(el('button',{class:'btn btn-nav',text:'Ajouter',on:{click:addFn}}));
+    wrap.appendChild(inputRow);
+
+    const list = el('div',{});
+    if(d[key].length===0){
+      list.appendChild(el('p',{class:'small',text:'Aucune question dans cette catégorie.'}));
+    } else {
+      d[key].forEach(q=>{
+        list.appendChild(el('div',{class:'list-item'},[
+          el('span',{text:q.text}),
+          el('button',{text:'✕',on:{click:()=>{
+            d[key] = d[key].filter(x=>x.id!==q.id);
+            render();
+          }}})
+        ]));
+      });
+    }
+    wrap.appendChild(list);
+    return wrap;
+  }
+}
+
+function exportListJSON(){
+  const d = App.draft;
+  const payload = {name:d.name, actions:d.actions.map(a=>a.text), truths:d.truths.map(t=>t.text)};
+  const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(d.name||'liste').replace(/[^a-z0-9]+/gi,'_')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function openQrModal(){ App.qrModalOpen = true; render(); }
+
+function renderQrModal(app){
+  const d = App.draft;
+  const payload = {name:d.name, actions:d.actions.map(a=>a.text), truths:d.truths.map(t=>t.text)};
+  const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(payload));
+  const overlay = el('div',{class:'modal-overlay',on:{click:(e)=>{ if(e.target===overlay){ App.qrModalOpen=false; render(); } }}});
+  const modal = el('div',{class:'modal'});
+  modal.appendChild(el('h2',{text:'Export QR code'}));
+
+  if(compressed.length > QR_LIMIT){
+    modal.appendChild(el('p',{text:`Cette liste est trop volumineuse pour un QR code lisible (${compressed.length} caractères compressés, limite ~${QR_LIMIT}).`}));
+    modal.appendChild(el('p',{class:'small',text:"Utilise plutôt l'export JSON pour cette liste."}));
+  } else {
+    const url = `${location.origin}${location.pathname}?data=${compressed}`;
+    const box = el('div',{class:'qr-box'});
+    modal.appendChild(box);
+    modal.appendChild(el('p',{class:'small',attrs:{style:'word-break:break-all;margin-top:10px;'},text:url}));
+    setTimeout(()=>{
+      try{ new QRCode(box, {text:url, width:220, height:220}); }
+      catch(e){ box.textContent = 'Erreur lors de la génération du QR code.'; }
+    },0);
+  }
+  modal.appendChild(el('div',{attrs:{style:'margin-top:16px;'}},[
+    el('button',{class:'btn btn-nav',text:'Fermer',on:{click:()=>{App.qrModalOpen=false;render();}}})
+  ]));
+  overlay.appendChild(modal);
+  app.appendChild(overlay);
+}
+
+/* ----- Fusion / import JSON ----- */
+function parseImportedJSON(raw){
+  let obj;
+  try{ obj = JSON.parse(raw); }catch(e){ return {error:'Le JSON est invalide (erreur de syntaxe).'}; }
+  if(typeof obj !== 'object' || obj===null) return {error:'Format inattendu : un objet JSON est requis.'};
+  const norm = (arr)=>{
+    if(arr===undefined) return [];
+    if(!Array.isArray(arr)) return null;
+    const out = [];
+    for(const item of arr){
+      if(typeof item === 'string') out.push(item.trim());
+      else if(item && typeof item.text === 'string') out.push(item.text.trim());
+      else return null;
+    }
+    return out.filter(Boolean);
+  };
+  const actions = norm(obj.actions);
+  const truths = norm(obj.truths);
+  if(actions===null || truths===null) return {error:"Structure invalide : 'actions' et 'truths' doivent être des listes de textes."};
+  if(actions.length===0 && truths.length===0) return {error:'Le JSON ne contient aucune question.'};
+  return {name: typeof obj.name==='string'?obj.name:null, actions, truths};
+}
+
+function openMergeModal(){
+  App.dupModal = {step:'paste', raw:''};
+  render();
+}
+
+function renderMergeModal(app){
+  const state = App.dupModal;
+  const overlay = el('div',{class:'modal-overlay',on:{click:(e)=>{ if(e.target===overlay){ App.dupModal=null; render(); } }}});
+  const modal = el('div',{class:'modal'});
+
+  if(state.step==='paste'){
+    modal.appendChild(el('h2',{text:'Importer / fusionner via JSON'}));
+    const ta = el('textarea',{attrs:{placeholder:'{"name":"...", "actions":["..."], "truths":["..."]}'},value:state.raw});
+    ta.addEventListener('input', e=>{ state.raw = e.target.value; });
+    modal.appendChild(ta);
+    if(state.error) modal.appendChild(el('p',{attrs:{style:'color:#b5533a;'},text:state.error}));
+    modal.appendChild(el('div',{class:'row',attrs:{style:'margin-top:14px;'}},[
+      el('button',{class:'btn btn-nav',text:'Analyser',on:{click:()=>{
+        const res = parseImportedJSON(state.raw);
+        if(res.error){ state.error = res.error; render(); return; }
+        prepareDuplicateReview(res);
+      }}}),
+      el('button',{class:'btn btn-ghost',text:'Annuler',on:{click:()=>{App.dupModal=null;render();}}}),
+    ]));
+  } else if(state.step==='review'){
+    modal.appendChild(el('h2',{text:'Doublons détectés'}));
+    modal.appendChild(el('p',{class:'small',text:'Les questions identiques (texte strictement identique) déjà présentes dans la liste sont cochées pour exclusion. Décoche celles que tu veux quand même ajouter en double.'}));
+    if(state.duplicates.length===0){
+      modal.appendChild(el('p',{text:'Aucun doublon détecté.'}));
+    } else {
+      modal.appendChild(el('div',{class:'row',attrs:{style:'margin-bottom:8px;'}},[
+        el('button',{class:'btn btn-ghost',text:'Tout exclure',on:{click:()=>{state.duplicates.forEach(x=>x.exclude=true); render();}}}),
+        el('button',{class:'btn btn-ghost',text:'Tout inclure',on:{click:()=>{state.duplicates.forEach(x=>x.exclude=false); render();}}}),
+      ]));
+      state.duplicates.forEach(dup=>{
+        const row = el('div',{class:'dup-item'});
+        const cb = el('input',{attrs:{type:'checkbox'}});
+        cb.checked = dup.exclude;
+        cb.addEventListener('change', e=>{ dup.exclude = e.target.checked; });
+        row.appendChild(cb);
+        row.appendChild(el('span',{text:`[${dup.category==='actions'?'Action':'Vérité'}] ${dup.text}`}));
+        modal.appendChild(row);
+      });
+    }
+    modal.appendChild(el('div',{class:'row',attrs:{style:'margin-top:16px;'}},[
+      el('button',{class:'btn btn-nav',text:'Fusionner',on:{click:()=>{
+        applyMerge(state);
+        App.dupModal=null;
+        showToast('Fusion effectuée.');
+        render();
+      }}}),
+      el('button',{class:'btn btn-ghost',text:'Annuler',on:{click:()=>{App.dupModal=null;render();}}}),
+    ]));
+  }
+
+  overlay.appendChild(modal);
+  app.appendChild(overlay);
+
+  function prepareDuplicateReview(res){
+    const existingActions = new Set(App.draft.actions.map(a=>a.text));
+    const existingTruths = new Set(App.draft.truths.map(t=>t.text));
+    const duplicates = [];
+    res.actions.forEach(t=>{ if(existingActions.has(t)) duplicates.push({category:'actions', text:t, exclude:true}); });
+    res.truths.forEach(t=>{ if(existingTruths.has(t)) duplicates.push({category:'truths', text:t, exclude:true}); });
+    state.step='review';
+    state.incoming = res;
+    state.duplicates = duplicates;
+    render();
+  }
+}
+
+function applyMerge(state){
+  const excludedTexts = {actions:new Set(), truths:new Set()};
+  state.duplicates.forEach(d=>{ if(d.exclude) excludedTexts[d.category].add(d.text); });
+  state.incoming.actions.forEach(t=>{ if(!excludedTexts.actions.has(t)) App.draft.actions.push({id:uid(), text:t}); });
+  state.incoming.truths.forEach(t=>{ if(!excludedTexts.truths.has(t)) App.draft.truths.push({id:uid(), text:t}); });
+}
+
+/* ----- Import automatique via ?data= ----- */
+function tryAutoImportFromURL(){
+  const params = new URLSearchParams(location.search);
+  const data = params.get('data');
+  if(!data) return;
+  try{
+    const json = LZString.decompressFromEncodedURIComponent(data);
+    const res = parseImportedJSON(json);
+    if(res.error){ showToast('Import via QR échoué : ' + res.error); return; }
+    const lists = loadLists();
+    const name = res.name || 'Liste importée';
+    const existing = lists.find(l=>l.name===name);
+    if(existing){
+      const existingActions = new Set(existing.actions.map(a=>a.text));
+      const existingTruths = new Set(existing.truths.map(t=>t.text));
+      const newActions = res.actions.filter(t=>!existingActions.has(t)).map(t=>({id:uid(),text:t}));
+      const newTruths = res.truths.filter(t=>!existingTruths.has(t)).map(t=>({id:uid(),text:t}));
+      existing.actions.push(...newActions);
+      existing.truths.push(...newTruths);
+      saveLists(lists);
+      showToast(`Liste "${name}" fusionnée depuis le QR code (doublons ignorés).`);
+    } else {
+      lists.push({id:uid(), name, actions:res.actions.map(t=>({id:uid(),text:t})), truths:res.truths.map(t=>({id:uid(),text:t}))});
+      saveLists(lists);
+      showToast(`Liste "${name}" importée depuis le QR code.`);
+    }
+  }catch(e){
+    showToast('Import via QR échoué : données illisibles.');
+  }
+  history.replaceState(null,'',location.pathname);
+}
+
+/* ================= 3. CONFIGURATION DE PARTIE ================= */
+function renderConfig(app){
+  const lists = loadLists().filter(l=>l.actions.length+l.truths.length>0);
+  const pre = App.configPrefill || {listId:null, sansRemise:false, players:[]};
+  if(!App._configState){
+    App._configState = {
+      players: pre.players && pre.players.length ? pre.players.slice() : ['',''],
+      listId: pre.listId || (lists[0] && lists[0].id) || null,
+      sansRemise: !!pre.sansRemise
+    };
+  }
+  const cs = App._configState;
+
+  app.appendChild(el('button',{class:'link-back',text:'← Retour au dashboard',on:{click:()=>{App._configState=null;App.configPrefill=null;App.screen='dashboard';render();}}}));
+  app.appendChild(el('h1',{text:'Nouvelle partie'}));
+
+  if(lists.length===0){
+    app.appendChild(el('div',{class:'empty-state'},[el('p',{text:"Aucune liste jouable. Crée d'abord une liste avec au moins une question."})]));
+    return;
+  }
+
+  const card = el('div',{class:'card'});
+  card.appendChild(el('h2',{text:'Joueurs'}));
+  const playersWrap = el('div',{});
+  cs.players.forEach((name, i)=>{
+    const row = el('div',{class:'player-input-row'});
+    const input = el('input',{attrs:{type:'text',placeholder:`Prénom ${i+1}`},value:name});
+    input.addEventListener('input', e=>{ cs.players[i] = e.target.value; syncLaunchButton(); });
+    row.appendChild(input);
+    if(cs.players.length>2){
+      row.appendChild(el('button',{class:'btn btn-danger',text:'✕',on:{click:()=>{
+        cs.players.splice(i,1); render();
+      }}}));
+    }
+    playersWrap.appendChild(row);
+  });
+  card.appendChild(playersWrap);
+  card.appendChild(el('button',{class:'btn btn-ghost',text:'+ Ajouter un joueur',disabled:cs.players.length>=15,on:{click:()=>{
+    cs.players.push(''); render();
+  }}}));
+  app.appendChild(card);
+
+  const card2 = el('div',{class:'card'});
+  card2.appendChild(el('h2',{text:'Liste de questions'}));
+  const select = el('select',{});
+  lists.forEach(l=>{
+    const opt = el('option',{text:`${l.name} (${l.actions.length} action(s), ${l.truths.length} vérité(s))`,attrs:{value:l.id}});
+    if(l.id===cs.listId) opt.selected = true;
+    select.appendChild(opt);
+  });
+  select.addEventListener('change', e=>{ cs.listId = e.target.value; });
+  card2.appendChild(select);
+
+  const checkboxRow = el('label',{attrs:{style:'display:flex;align-items:center;gap:8px;margin-top:16px;cursor:pointer;'}});
+  const checkbox = el('input',{attrs:{type:'checkbox'}});
+  checkbox.checked = cs.sansRemise;
+  checkbox.addEventListener('change', e=>{ cs.sansRemise = e.target.checked; });
+  checkboxRow.appendChild(checkbox);
+  checkboxRow.appendChild(document.createTextNode('Sans remise (chaque question ne sort qu\'une fois par partie)'));
+  card2.appendChild(checkboxRow);
+  app.appendChild(card2);
+
+  const launchBtn = el('button',{class:'btn btn-nav btn-block',text:'Lancer la partie',attrs:{id:'launch-btn'},on:{click:launchGame}});
+  app.appendChild(launchBtn);
+
+  function syncLaunchButton(){
+    const validPlayers = cs.players.filter(p=>p.trim().length>0).length;
+    document.getElementById('launch-btn').disabled = !(validPlayers>=2 && cs.listId);
+  }
+  syncLaunchButton();
+
+  function launchGame(){
+    const names = cs.players.map(p=>p.trim()).filter(Boolean);
+    if(names.length<2 || !cs.listId) return;
+    const list = loadLists().find(l=>l.id===cs.listId);
+    if(!list) return;
+    const game = {
+      listId: list.id,
+      players: names,
+      sansRemise: cs.sansRemise,
+      actionsTotal: list.actions.length,
+      truthsTotal: list.truths.length,
+      actionsPool: list.actions.map(a=>a.text).slice(),
+      truthsPool: list.truths.map(t=>t.text).slice(),
+      queue: [],
+      currentPlayerIndex: 0,
+      phase: 'choosing',
+      currentCategory: null,
+      currentQuestionText: null,
+      justExhausted: null,
+      exhaustedCategory: null,
+      otherHasStock: false
+    };
+    game.queue = shuffle(names.map((_,i)=>i));
+    game.currentPlayerIndex = game.queue.shift();
+    saveGame(game);
+    App._configState = null;
+    App.configPrefill = null;
+    App.screen='game';
+    render();
+  }
+}
+
+/* ================= 4. ECRAN DE JEU ================= */
+function categoryAvailable(game, cat){
+  if(cat==='action') return game.sansRemise ? game.actionsPool.length>0 : game.actionsTotal>0;
+  return game.sansRemise ? game.truthsPool.length>0 : game.truthsTotal>0;
+}
+
+function renderGame(app){
+  let game = loadGame();
+  if(!game){ App.screen='dashboard'; render(); return; }
+  const list = loadLists().find(l=>l.id===game.listId);
+  const listName = list ? list.name : 'Liste';
+
+  app.appendChild(el('div',{class:'top-bar'},[
+    el('span',{class:'small',text:listName}),
+    el('button',{class:'link-back',text:'Abandonner la partie',on:{click:()=>{
+      if(confirm('Abandonner la partie en cours et revenir au dashboard ?')){
+        saveGame(null); App.screen='dashboard'; render();
+      }
+    }}})
+  ]));
+
+  if(game.phase==='exhausted'){
+    renderExhaustedScreen(app, game);
+    return;
+  }
+  if(game.phase==='finished'){
+    App.screen='end'; render(); return;
+  }
+
+  const playerName = game.players[game.currentPlayerIndex];
+  const scene = el('div',{class:'flip-scene'});
+  const flipCard = el('div',{class:'flip-card'+(game.phase==='revealed'?' flipped':'')});
+
+  const front = el('div',{class:'flip-face front'},[
+    el('div',{class:'player-name',text:playerName})
+  ]);
+  const back = el('div',{class:'flip-face back'},[
+    el('div',{class:'category-tag',text: game.currentCategory==='action'?'ACTION':'VÉRITÉ'}),
+    el('div',{class:'question-text',text: game.currentQuestionText ?
+      `${playerName} doit ${game.currentCategory==='action'?'faire une action':'répondre à une vérité'} : ${game.currentQuestionText}` : ''})
+  ]);
+  flipCard.appendChild(front);
+  flipCard.appendChild(back);
+  scene.appendChild(flipCard);
+  app.appendChild(scene);
+
+  if(game.phase==='choosing'){
+    const canAction = categoryAvailable(game,'action');
+    const canVerite = categoryAvailable(game,'verite');
+    const row = el('div',{class:'row'});
+    if(canAction) row.appendChild(el('button',{class:'btn btn-action btn-block',text:'Action',on:{click:()=>drawQuestion('action')}}));
+    if(canVerite) row.appendChild(el('button',{class:'btn btn-action btn-block',text:'Vérité',on:{click:()=>drawQuestion('verite')}}));
+    app.appendChild(row);
+  } else if(game.phase==='revealed'){
+    app.appendChild(el('button',{class:'btn btn-nav btn-block',text:'Suivant',on:{click:goNext}}));
+  }
+
+  function drawQuestion(cat){
+    const g = loadGame();
+    const pool = cat==='action' ? g.actionsPool : g.truthsPool;
+    const idx = Math.floor(Math.random()*pool.length);
+    const text = pool[idx];
+    if(g.sansRemise) pool.splice(idx,1);
+    g.currentCategory = cat;
+    g.currentQuestionText = text;
+    g.phase = 'revealed';
+    if(g.sansRemise){
+      const nowPool = cat==='action' ? g.actionsPool : g.truthsPool;
+      g.justExhausted = nowPool.length===0 ? cat : null;
+    } else {
+      g.justExhausted = null;
+    }
+    saveGame(g);
+    render();
+  }
+
+  function advanceTurn(g){
+    if(g.queue.length===0) g.queue = shuffle(g.players.map((_,i)=>i));
+    g.currentPlayerIndex = g.queue.shift();
+    g.phase='choosing';
+    g.currentCategory=null;
+    g.currentQuestionText=null;
+  }
+
+  function goNext(){
+    const g = loadGame();
+    if(g.justExhausted){
+      const other = g.justExhausted==='action' ? 'verite' : 'action';
+      g.exhaustedCategory = g.justExhausted;
+      g.otherHasStock = categoryAvailable(g, other);
+      g.justExhausted = null;
+      g.phase = 'exhausted';
+      saveGame(g);
+      render();
+      return;
+    }
+    advanceTurn(g);
+    saveGame(g);
+    render();
+  }
+}
+
+function renderExhaustedScreen(app, game){
+  const catLabel = game.exhaustedCategory==='action' ? 'Actions' : 'Vérités';
+  app.appendChild(el('div',{class:'card center'},[
+    el('h2',{text:`Catégorie "${catLabel}" épuisée`}),
+    el('p',{text:'Toutes les questions de cette catégorie ont été utilisées pour cette partie.'})
+  ]));
+  const row = el('div',{class:'stack'});
+  if(game.otherHasStock){
+    row.appendChild(el('button',{class:'btn btn-nav btn-block',text:"Continuer avec l'autre catégorie",on:{click:()=>{
+      const g = loadGame();
+      if(g.queue.length===0) g.queue = shuffle(g.players.map((_,i)=>i));
+      g.currentPlayerIndex = g.queue.shift();
+      g.phase='choosing';
+      g.currentCategory=null; g.currentQuestionText=null;
+      saveGame(g); render();
+    }}}));
+  }
+  row.appendChild(el('button',{class:'btn btn-danger btn-block',text:'Terminer la partie',on:{click:()=>{
+    const g = loadGame();
+    g.phase='finished';
+    saveGame(g);
+    App.screen='end'; render();
+  }}}));
+  app.appendChild(row);
+}
+
+/* ================= 5. FIN DE PARTIE ================= */
+function renderEnd(app){
+  const game = loadGame();
+  app.appendChild(el('div',{class:'card center'},[
+    el('h1',{text:'Partie terminée'}),
+    el('p',{text:'Bien joué à tous les participants !'})
+  ]));
+  const stack = el('div',{class:'stack'});
+  stack.appendChild(el('button',{class:'btn btn-nav btn-block',text:'Recommencer',on:{click:()=>{
+    if(!game) { App.screen='dashboard'; render(); return; }
+    const list = loadLists().find(l=>l.id===game.listId);
+    if(!list){ saveGame(null); App.screen='dashboard'; render(); return; }
+    const newGame = {
+      listId: list.id,
+      players: game.players.slice(),
+      sansRemise: game.sansRemise,
+      actionsTotal: list.actions.length,
+      truthsTotal: list.truths.length,
+      actionsPool: list.actions.map(a=>a.text).slice(),
+      truthsPool: list.truths.map(t=>t.text).slice(),
+      queue: [],
+      currentPlayerIndex: 0,
+      phase:'choosing',
+      currentCategory:null, currentQuestionText:null,
+      justExhausted:null, exhaustedCategory:null, otherHasStock:false
+    };
+    newGame.queue = shuffle(newGame.players.map((_,i)=>i));
+    newGame.currentPlayerIndex = newGame.queue.shift();
+    saveGame(newGame);
+    App.screen='game'; render();
+  }}}));
+  stack.appendChild(el('button',{class:'btn btn-ghost btn-block',text:'Changer les joueurs',on:{click:()=>{
+    if(!game){ App.screen='dashboard'; render(); return; }
+    App.configPrefill = {listId:game.listId, sansRemise:game.sansRemise, players:[]};
+    App._configState = null;
+    saveGame(null);
+    App.screen='config'; render();
+  }}}));
+  stack.appendChild(el('button',{class:'btn btn-danger btn-block',text:'Terminer',on:{click:()=>{
+    saveGame(null);
+    App.screen='dashboard'; render();
+  }}}));
+  app.appendChild(stack);
+}
+
+/* ================= INITIALISATION ================= */
+tryAutoImportFromURL();
+const existingGame = loadGame();
+if(existingGame && existingGame.phase !== 'finished'){
+  App.screen = 'game';
+} else if(existingGame && existingGame.phase === 'finished'){
+  App.screen = 'end';
+}
+render();
+</script>
+</body>
+</html>
