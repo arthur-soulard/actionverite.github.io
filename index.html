@@ -188,7 +188,8 @@ let App = {
   editingListId: null,   // id de la liste en cours d'édition, ou null = nouvelle
   draft: null,           // brouillon {name, actions:[], truths:[]} pendant l'édition
   configPrefill: null,   // pour "changer les joueurs": {listId, sansRemise}
-  dupModal: null,        // état de la modale de fusion JSON
+  mergeModal: null,      // état de la modale de fusion entre listes
+  mergeUndo: null,       // sauvegarde avant la dernière fusion (pour pouvoir l'annuler)
 };
 
 /* ================= RENDU PRINCIPAL ================= */
@@ -223,6 +224,7 @@ function renderDashboard(app){
     el('button',{class:'btn btn-nav',text:'+ Créer une nouvelle liste',on:{click:()=>{
       App.editingListId = null;
       App.draft = {name:'', actions:[], truths:[]};
+      App.mergeUndo = null;
       App.screen='edit'; render();
     }}})
   ]));
@@ -246,6 +248,7 @@ function renderDashboard(app){
           el('button',{class:'btn btn-ghost',text:'Modifier',on:{click:()=>{
             App.editingListId = list.id;
             App.draft = JSON.parse(JSON.stringify(list));
+            App.mergeUndo = null;
             App.screen='edit'; render();
           }}}),
           el('button',{class:'btn btn-danger',text:'Supprimer',on:{click:()=>{
@@ -279,11 +282,20 @@ function renderEdit(app){
   twoCol.appendChild(buildCategoryEditor('Vérités','truths'));
   app.appendChild(twoCol);
 
-  app.appendChild(el('div',{class:'row',attrs:{style:'margin-top:20px;'}},[
-    el('button',{class:'btn btn-ghost',text:'Importer / fusionner via JSON',on:{click:openMergeModal}}),
-    el('button',{class:'btn btn-ghost',text:'Exporter en JSON',on:{click:exportListJSON}}),
+  const toolsRow = el('div',{class:'row',attrs:{style:'margin-top:20px;'}},[
+    el('button',{class:'btn btn-ghost',text:'Fusionner une autre liste',on:{click:openMergeModal}}),
     el('button',{class:'btn btn-ghost',text:'Exporter en QR code',on:{click:openQrModal}}),
-  ]));
+  ]);
+  if(App.mergeUndo){
+    toolsRow.appendChild(el('button',{class:'btn btn-ghost',text:'↩ Annuler la dernière fusion',on:{click:()=>{
+      d.actions = App.mergeUndo.actions;
+      d.truths = App.mergeUndo.truths;
+      App.mergeUndo = null;
+      showToast('Fusion annulée.');
+      render();
+    }}}));
+  }
+  app.appendChild(toolsRow);
 
   const totalQuestions = d.actions.length + d.truths.length;
   app.appendChild(el('div',{attrs:{style:'margin-top:24px;'}},[
@@ -296,6 +308,7 @@ function renderEdit(app){
         if(idx>=0) lists[idx] = {id:App.editingListId, name:d.name.trim()||'Liste sans nom', actions:d.actions, truths:d.truths};
       }
       saveLists(lists);
+      App.mergeUndo = null;
       showToast('Liste enregistrée.');
       App.screen='dashboard'; render();
     }}})
@@ -304,7 +317,7 @@ function renderEdit(app){
     app.appendChild(el('p',{class:'small',attrs:{style:'margin-top:8px;'},text:"Ajoute au moins une question (action ou vérité) pour pouvoir enregistrer."}));
   }
 
-  if(App.dupModal) renderMergeModal(app);
+  if(App.mergeModal) renderMergeModal(app);
   if(App.qrModalOpen) renderQrModal(app);
 
   function buildCategoryEditor(title, key){
@@ -342,18 +355,6 @@ function renderEdit(app){
     wrap.appendChild(list);
     return wrap;
   }
-}
-
-function exportListJSON(){
-  const d = App.draft;
-  const payload = {name:d.name, actions:d.actions.map(a=>a.text), truths:d.truths.map(t=>t.text)};
-  const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${(d.name||'liste').replace(/[^a-z0-9]+/gi,'_')}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 function openQrModal(){ App.qrModalOpen = true; render(); }
@@ -410,34 +411,48 @@ function parseImportedJSON(raw){
 }
 
 function openMergeModal(){
-  App.dupModal = {step:'paste', raw:''};
+  const others = loadLists().filter(l=>l.id!==App.editingListId);
+  App.mergeModal = {step:'select', sourceListId: others[0] ? others[0].id : null};
   render();
 }
 
 function renderMergeModal(app){
-  const state = App.dupModal;
-  const overlay = el('div',{class:'modal-overlay',on:{click:(e)=>{ if(e.target===overlay){ App.dupModal=null; render(); } }}});
+  const state = App.mergeModal;
+  const others = loadLists().filter(l=>l.id!==App.editingListId);
+  const overlay = el('div',{class:'modal-overlay',on:{click:(e)=>{ if(e.target===overlay){ App.mergeModal=null; render(); } }}});
   const modal = el('div',{class:'modal'});
 
-  if(state.step==='paste'){
-    modal.appendChild(el('h2',{text:'Importer / fusionner via JSON'}));
-    const ta = el('textarea',{attrs:{placeholder:'{"name":"...", "actions":["..."], "truths":["..."]}'},value:state.raw});
-    ta.addEventListener('input', e=>{ state.raw = e.target.value; });
-    modal.appendChild(ta);
-    if(state.error) modal.appendChild(el('p',{attrs:{style:'color:#b5533a;'},text:state.error}));
-    modal.appendChild(el('div',{class:'row',attrs:{style:'margin-top:14px;'}},[
-      el('button',{class:'btn btn-nav',text:'Analyser',on:{click:()=>{
-        const res = parseImportedJSON(state.raw);
-        if(res.error){ state.error = res.error; render(); return; }
-        prepareDuplicateReview(res);
-      }}}),
-      el('button',{class:'btn btn-ghost',text:'Annuler',on:{click:()=>{App.dupModal=null;render();}}}),
-    ]));
+  if(state.step==='select'){
+    modal.appendChild(el('h2',{text:'Fusionner une autre liste'}));
+    modal.appendChild(el('p',{class:'small',text:"Ajoute toutes les questions d'une autre liste a celle-ci. La liste d'origine n'est ni modifiee ni supprimee."}));
+    if(others.length===0){
+      modal.appendChild(el('p',{text:"Aucune autre liste disponible pour l'instant."}));
+      modal.appendChild(el('div',{class:'row',attrs:{style:'margin-top:16px;'}},[
+        el('button',{class:'btn btn-ghost',text:'Fermer',on:{click:()=>{App.mergeModal=null;render();}}}),
+      ]));
+    } else {
+      const select = el('select',{});
+      others.forEach(l=>{
+        const opt = el('option',{text:`${l.name} (${l.actions.length} action(s), ${l.truths.length} verite(s))`,attrs:{value:l.id}});
+        if(l.id===state.sourceListId) opt.selected = true;
+        select.appendChild(opt);
+      });
+      select.addEventListener('change', e=>{ state.sourceListId = e.target.value; });
+      modal.appendChild(select);
+      modal.appendChild(el('div',{class:'row',attrs:{style:'margin-top:16px;'}},[
+        el('button',{class:'btn btn-nav',text:'Suivant',on:{click:()=>{
+          const source = others.find(l=>l.id===state.sourceListId);
+          if(!source) return;
+          prepareDuplicateReview(source);
+        }}}),
+        el('button',{class:'btn btn-ghost',text:'Annuler',on:{click:()=>{App.mergeModal=null;render();}}}),
+      ]));
+    }
   } else if(state.step==='review'){
-    modal.appendChild(el('h2',{text:'Doublons détectés'}));
-    modal.appendChild(el('p',{class:'small',text:'Les questions identiques (texte strictement identique) déjà présentes dans la liste sont cochées pour exclusion. Décoche celles que tu veux quand même ajouter en double.'}));
+    modal.appendChild(el('h2',{text:`Fusionner "${state.sourceName}"`}));
+    modal.appendChild(el('p',{class:'small',text:'Les questions identiques (texte strictement identique) deja presentes dans cette liste sont cochees pour exclusion. Decoche celles que tu veux quand meme ajouter en double.'}));
     if(state.duplicates.length===0){
-      modal.appendChild(el('p',{text:'Aucun doublon détecté.'}));
+      modal.appendChild(el('p',{text:'Aucun doublon detecte.'}));
     } else {
       modal.appendChild(el('div',{class:'row',attrs:{style:'margin-bottom:8px;'}},[
         el('button',{class:'btn btn-ghost',text:'Tout exclure',on:{click:()=>{state.duplicates.forEach(x=>x.exclude=true); render();}}}),
@@ -449,38 +464,45 @@ function renderMergeModal(app){
         cb.checked = dup.exclude;
         cb.addEventListener('change', e=>{ dup.exclude = e.target.checked; });
         row.appendChild(cb);
-        row.appendChild(el('span',{text:`[${dup.category==='actions'?'Action':'Vérité'}] ${dup.text}`}));
+        row.appendChild(el('span',{text:`[${dup.category==='actions'?'Action':'Verite'}] ${dup.text}`}));
         modal.appendChild(row);
       });
     }
     modal.appendChild(el('div',{class:'row',attrs:{style:'margin-top:16px;'}},[
       el('button',{class:'btn btn-nav',text:'Fusionner',on:{click:()=>{
         applyMerge(state);
-        App.dupModal=null;
-        showToast('Fusion effectuée.');
+        App.mergeModal=null;
+        showToast('Fusion effectuee.');
         render();
       }}}),
-      el('button',{class:'btn btn-ghost',text:'Annuler',on:{click:()=>{App.dupModal=null;render();}}}),
+      el('button',{class:'btn btn-ghost',text:'\u2190 Retour',on:{click:()=>{
+        state.step='select';
+        render();
+      }}}),
+      el('button',{class:'btn btn-ghost',text:'Annuler',on:{click:()=>{App.mergeModal=null;render();}}}),
     ]));
   }
 
   overlay.appendChild(modal);
   app.appendChild(overlay);
 
-  function prepareDuplicateReview(res){
+  function prepareDuplicateReview(source){
+    const incoming = {actions: source.actions.map(a=>a.text), truths: source.truths.map(t=>t.text)};
     const existingActions = new Set(App.draft.actions.map(a=>a.text));
     const existingTruths = new Set(App.draft.truths.map(t=>t.text));
     const duplicates = [];
-    res.actions.forEach(t=>{ if(existingActions.has(t)) duplicates.push({category:'actions', text:t, exclude:true}); });
-    res.truths.forEach(t=>{ if(existingTruths.has(t)) duplicates.push({category:'truths', text:t, exclude:true}); });
+    incoming.actions.forEach(t=>{ if(existingActions.has(t)) duplicates.push({category:'actions', text:t, exclude:true}); });
+    incoming.truths.forEach(t=>{ if(existingTruths.has(t)) duplicates.push({category:'truths', text:t, exclude:true}); });
     state.step='review';
-    state.incoming = res;
+    state.sourceName = source.name;
+    state.incoming = incoming;
     state.duplicates = duplicates;
     render();
   }
 }
 
 function applyMerge(state){
+  App.mergeUndo = { actions: App.draft.actions.slice(), truths: App.draft.truths.slice() };
   const excludedTexts = {actions:new Set(), truths:new Set()};
   state.duplicates.forEach(d=>{ if(d.exclude) excludedTexts[d.category].add(d.text); });
   state.incoming.actions.forEach(t=>{ if(!excludedTexts.actions.has(t)) App.draft.actions.push({id:uid(), text:t}); });
