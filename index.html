@@ -138,9 +138,49 @@
   .dup-item:last-child{border-bottom:none;}
   .player-input-row{display:flex;gap:8px;margin-bottom:8px;}
   .player-input-row input{flex:1;}
+.site-qr{
+  position:fixed;
+  left:20px;
+  top:50%;
+  transform:translateY(-50%);
+  background:#fff;
+  border:2px solid var(--brown, #7a5c46);
+  border-radius:14px;
+  padding:14px;
+  text-align:center;
+  z-index:20;
+  box-shadow:0 4px 14px rgba(0,0,0,0.15);
+}
+.site-qr img, .site-qr canvas{ display:block; margin:0 auto; }
+.site-qr p{ margin:8px 0 0; font-size:11px; max-width:110px; color:var(--text-light,#666); }
+@media (max-width: 1150px){
+  .site-qr{ display:none; }
+}
+.site-share-btn{
+  position:fixed;
+  left:20px;
+  bottom:20px;
+  z-index:20;
+  padding:10px 16px;
+  border-radius:999px;
+  border:none;
+  background:var(--brown, #7a5c46);
+  color:#fff;
+  font-size:14px;
+  cursor:pointer;
+  box-shadow:0 4px 14px rgba(0,0,0,0.2);
+}
+@media (min-width: 1151px){
+  .site-share-btn{ display:none; }
+}
 </style>
 </head>
 <body>
+<div id="site-qr" class="site-qr">
+  <div id="site-qr-code"></div>
+  <p>Scanne pour retrouver le site</p>
+</div>
+<button id="site-share-btn" class="site-share-btn" title="Partager le site">Partager le site</button>
 <div id="app"></div>
 <div id="toast" class="toast"></div>
 
@@ -818,6 +858,32 @@ function renderEnd(app){
 }
 
 /* ================= INITIALISATION ================= */
+/* ----- QR code du site + bouton de partage ----- */
+const SITE_URL = 'https://arthur-soulard.github.io/actionverite.github.io/';
+
+function renderSiteQr(){
+  const box = document.getElementById('site-qr-code');
+  if(!box) return;
+  try{ new QRCode(box, {text:SITE_URL, width:110, height:110}); }
+  catch(e){ /* ignore si la lib n'a pas pu charger */ }
+}
+
+function shareSite(){
+  if(navigator.share){
+    navigator.share({title:'Action ou Vérité', url:SITE_URL}).catch(()=>{});
+  } else if(navigator.clipboard){
+    navigator.clipboard.writeText(SITE_URL)
+      .then(()=>showToast('Lien copié dans le presse-papiers !'))
+      .catch(()=>showToast(SITE_URL));
+  } else {
+    showToast(SITE_URL);
+  }
+}
+
+renderSiteQr();
+const shareBtn = document.getElementById('site-share-btn');
+if(shareBtn) shareBtn.addEventListener('click', shareSite);
+
 tryAutoImportFromURL();
 const existingGame = loadGame();
 if(existingGame && existingGame.phase !== 'finished'){
