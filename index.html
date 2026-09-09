@@ -173,6 +173,25 @@
 @media (min-width: 1151px){
   .site-share-btn{ display:none; }
 }
+  .info-wrap{position:relative;display:inline-flex;margin-left:6px;vertical-align:middle;}
+  .info-icon{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:18px;height:18px;border-radius:50%;flex-shrink:0;
+    background:var(--avocado);color:#fff;font-size:12px;font-weight:700;
+    font-style:italic;font-family:Georgia,'Times New Roman',serif;
+    cursor:pointer;user-select:none;
+  }
+  .info-icon:hover{background:var(--avocado-dark);}
+  .info-tooltip{
+    display:none;position:absolute;left:0;top:24px;z-index:50;
+    background:var(--text);color:#fff;padding:12px 14px;border-radius:8px;
+    font-size:13px;line-height:1.5;width:250px;box-shadow:0 4px 14px rgba(0,0,0,0.25);
+    text-align:left;font-weight:400;
+  }
+  .info-tooltip b{color:var(--avocado);}
+  .info-wrap:hover .info-tooltip{display:block;}
+  .info-tooltip.show{display:block;}
+  @media(max-width:480px){.info-tooltip{width:190px;left:-90px;}}
 </style>
 </head>
 <body>
@@ -259,14 +278,24 @@ function el(tag, opts={}, children=[]){
 /* ================= 1. DASHBOARD ================= */
 function renderDashboard(app){
   const lists = loadLists();
+  const playableLists = lists.filter(l=>l.actions.length+l.truths.length>0);
   app.appendChild(el('div',{class:'top-bar'},[
     el('h1',{text:'Action ou Vérité'}),
-    el('button',{class:'btn btn-nav',text:'+ Créer une nouvelle liste',on:{click:()=>{
-      App.editingListId = null;
-      App.draft = {name:'', actions:[], truths:[]};
-      App.mergeUndo = null;
-      App.screen='edit'; render();
-    }}})
+    el('div',{class:'row'},[
+      el('button',{class:'btn btn-nav',text:'▶ Jouer',disabled:playableLists.length===0,on:{click:()=>{
+        App.configPrefill = null;
+        App._configState = null;
+        App.dedupModal = null;
+        App.screen='config'; render();
+      }}}),
+      el('button',{class:'btn btn-ghost',text:'+ Créer une nouvelle liste',on:{click:()=>{
+        App.editingListId = null;
+        App.draft = {name:'', actions:[], truths:[]};
+        App.mergeUndo = null;
+        App.editingQuestion = null;
+        App.screen='edit'; render();
+      }}})
+    ])
   ]));
 
   if(lists.length===0){
@@ -281,14 +310,11 @@ function renderDashboard(app){
           el('p',{class:'small',text:`${list.actions.length} action(s) · ${list.truths.length} vérité(s)`})
         ]),
         el('div',{class:'row'},[
-          el('button',{class:'btn btn-nav',text:'Jouer',disabled:(list.actions.length+list.truths.length===0),on:{click:()=>{
-            App.configPrefill = {listId:list.id, sansRemise:false, players:[]};
-            App.screen='config'; render();
-          }}}),
           el('button',{class:'btn btn-ghost',text:'Modifier',on:{click:()=>{
             App.editingListId = list.id;
             App.draft = JSON.parse(JSON.stringify(list));
             App.mergeUndo = null;
+            App.editingQuestion = null;
             App.screen='edit'; render();
           }}}),
           el('button',{class:'btn btn-danger',text:'Supprimer',on:{click:()=>{
@@ -309,7 +335,7 @@ function renderEdit(app){
   const d = App.draft;
   const isNew = App.editingListId===null;
 
-  app.appendChild(el('button',{class:'link-back',text:'← Retour au dashboard',on:{click:()=>{App.screen='dashboard';render();}}}));
+  app.appendChild(el('button',{class:'link-back',text:'← Retour au dashboard',on:{click:()=>{App.editingQuestion=null;App.screen='dashboard';render();}}}));
   app.appendChild(el('h1',{text:isNew?'Nouvelle liste':'Modifier la liste'}));
 
   app.appendChild(el('div',{class:'field'},[
@@ -349,6 +375,7 @@ function renderEdit(app){
       }
       saveLists(lists);
       App.mergeUndo = null;
+      App.editingQuestion = null;
       showToast('Liste enregistrée.');
       App.screen='dashboard'; render();
     }}})
@@ -383,13 +410,45 @@ function renderEdit(app){
       list.appendChild(el('p',{class:'small',text:'Aucune question dans cette catégorie.'}));
     } else {
       d[key].forEach(q=>{
-        list.appendChild(el('div',{class:'list-item'},[
-          el('span',{text:q.text}),
-          el('button',{text:'✕',on:{click:()=>{
+        const editing = App.editingQuestion && App.editingQuestion.key===key && App.editingQuestion.id===q.id;
+        const row = el('div',{class:'list-item'});
+        if(editing){
+          const editInput = el('input',{attrs:{type:'text'},value:q.text});
+          editInput.style.flex='1';
+          editInput.style.marginRight='8px';
+          const commit = ()=>{
+            const val = editInput.value.trim();
+            if(val) q.text = val;
+            App.editingQuestion = null;
+            render();
+          };
+          editInput.addEventListener('keydown', e=>{
+            if(e.key==='Enter'){ e.preventDefault(); commit(); }
+            else if(e.key==='Escape'){ App.editingQuestion=null; render(); }
+          });
+          editInput.addEventListener('blur', commit);
+          row.appendChild(editInput);
+          row.appendChild(el('button',{text:'✕',on:{click:()=>{
+            d[key] = d[key].filter(x=>x.id!==q.id);
+            App.editingQuestion = null;
+            render();
+          }}}));
+          list.appendChild(row);
+          setTimeout(()=>{ editInput.focus(); editInput.select(); }, 0);
+        } else {
+          const span = el('span',{text:q.text,attrs:{style:'cursor:pointer;flex:1;'}});
+          span.title = 'Cliquer pour modifier';
+          span.addEventListener('click', ()=>{
+            App.editingQuestion = {key, id:q.id};
+            render();
+          });
+          row.appendChild(span);
+          row.appendChild(el('button',{text:'✕',on:{click:()=>{
             d[key] = d[key].filter(x=>x.id!==q.id);
             render();
-          }}})
-        ]));
+          }}}));
+          list.appendChild(row);
+        }
       });
     }
     wrap.appendChild(list);
@@ -581,20 +640,122 @@ function tryAutoImportFromURL(){
   history.replaceState(null,'',location.pathname);
 }
 
+function buildRemiseInfo(){
+  const wrap = el('span',{class:'info-wrap'});
+  const icon = el('span',{class:'info-icon',text:'i'});
+  const tooltip = el('div',{class:'info-tooltip'});
+  tooltip.innerHTML =
+    '<p style="margin:0 0 8px;"><b>Avec remise</b> : les questions peuvent revenir plusieurs fois dans la partie, mais jamais deux fois pour le même joueur (un autre joueur peut retomber dessus).</p>'+
+    '<p style="margin:0;"><b>Sans remise</b> : chaque question ne sort qu\'une seule fois pour toute la partie, tous joueurs confondus.</p>';
+  icon.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    tooltip.classList.toggle('show');
+  });
+  wrap.appendChild(icon);
+  wrap.appendChild(tooltip);
+  return wrap;
+}
+
 /* ================= 3. CONFIGURATION DE PARTIE ================= */
+function buildCombinedPools(selectedLists){
+  const result = {actions:[], truths:[], duplicates:[]};
+  ['actions','truths'].forEach(cat=>{
+    const seen = new Set();
+    selectedLists.forEach(list=>{
+      list[cat].forEach(q=>{
+        const isDup = seen.has(q.text);
+        const item = {text:q.text, exclude:isDup};
+        result[cat].push(item);
+        if(isDup) result.duplicates.push({category:cat, text:q.text, ref:item});
+        else seen.add(q.text);
+      });
+    });
+  });
+  return result;
+}
+
+function finalizeLaunch(combined, names, selectedLists, sansRemise, jokersMax){
+  const actionsFinal = combined.actions.filter(x=>!x.exclude).map(x=>x.text);
+  const truthsFinal = combined.truths.filter(x=>!x.exclude).map(x=>x.text);
+  const game = {
+    listIds: selectedLists.map(l=>l.id),
+    listNames: selectedLists.map(l=>l.name).join(' + '),
+    players: names,
+    sansRemise: sansRemise,
+    jokersMax: jokersMax||0,
+    jokersUsed: names.map(()=>0),
+    seen: { action: names.map(()=>[]), verite: names.map(()=>[]) },
+    actionsTotal: actionsFinal.length,
+    truthsTotal: truthsFinal.length,
+    actionsPoolFull: actionsFinal.slice(),
+    truthsPoolFull: truthsFinal.slice(),
+    actionsPool: actionsFinal.slice(),
+    truthsPool: truthsFinal.slice(),
+    queue: [],
+    currentPlayerIndex: 0,
+    phase: 'choosing',
+    currentCategory: null,
+    currentQuestionText: null,
+    justExhausted: null,
+    exhaustedCategory: null,
+    otherHasStock: false
+  };
+  game.queue = shuffle(names.map((_,i)=>i));
+  game.currentPlayerIndex = game.queue.shift();
+  saveGame(game);
+  App._configState = null;
+  App.configPrefill = null;
+  App.dedupModal = null;
+  App.screen='game';
+  render();
+}
+
+function renderDedupModal(app){
+  const state = App.dedupModal;
+  const overlay = el('div',{class:'modal-overlay',on:{click:(e)=>{ if(e.target===overlay){ App.dedupModal=null; render(); } }}});
+  const modal = el('div',{class:'modal'});
+  modal.appendChild(el('h2',{text:'Doublons entre les listes sélectionnées'}));
+  modal.appendChild(el('p',{class:'small',text:"Ces questions apparaissent dans plusieurs listes choisies. Coche celles à exclure (fusionner en une seule), décoche pour les garder en double (plus de chances de tomber dessus)."}));
+  modal.appendChild(el('div',{class:'row',attrs:{style:'margin-bottom:8px;'}},[
+    el('button',{class:'btn btn-ghost',text:'Tout exclure (fusionner)',on:{click:()=>{state.combined.duplicates.forEach(d=>d.ref.exclude=true); render();}}}),
+    el('button',{class:'btn btn-ghost',text:'Tout garder (doublons)',on:{click:()=>{state.combined.duplicates.forEach(d=>d.ref.exclude=false); render();}}}),
+  ]));
+  state.combined.duplicates.forEach(dup=>{
+    const drow = el('div',{class:'dup-item'});
+    const cb = el('input',{attrs:{type:'checkbox'}});
+    cb.checked = dup.ref.exclude;
+    cb.addEventListener('change', e=>{ dup.ref.exclude = e.target.checked; });
+    drow.appendChild(cb);
+    drow.appendChild(el('span',{text:`[${dup.category==='actions'?'Action':'Vérité'}] ${dup.text}`}));
+    modal.appendChild(drow);
+  });
+  modal.appendChild(el('div',{class:'row',attrs:{style:'margin-top:16px;'}},[
+    el('button',{class:'btn btn-nav',text:'Lancer la partie',on:{click:()=>{
+      finalizeLaunch(state.combined, state.names, state.selectedLists, state.sansRemise, state.jokersMax);
+    }}}),
+    el('button',{class:'btn btn-ghost',text:'Annuler',on:{click:()=>{App.dedupModal=null;render();}}}),
+  ]));
+  overlay.appendChild(modal);
+  app.appendChild(overlay);
+}
+
 function renderConfig(app){
   const lists = loadLists().filter(l=>l.actions.length+l.truths.length>0);
-  const pre = App.configPrefill || {listId:null, sansRemise:false, players:[]};
+  const pre = App.configPrefill || {listIds:null, listId:null, sansRemise:false, jokersMax:0, players:[]};
   if(!App._configState){
+    let initListIds = pre.listIds ? pre.listIds.slice() : (pre.listId ? [pre.listId] : (lists[0] ? [lists[0].id] : []));
+    initListIds = initListIds.filter(id=>lists.some(l=>l.id===id));
     App._configState = {
       players: pre.players && pre.players.length ? pre.players.slice() : ['',''],
-      listId: pre.listId || (lists[0] && lists[0].id) || null,
-      sansRemise: !!pre.sansRemise
+      listIds: initListIds,
+      sansRemise: !!pre.sansRemise,
+      jokersMax: pre.jokersMax || 0
     };
   }
   const cs = App._configState;
 
-  app.appendChild(el('button',{class:'link-back',text:'← Retour au dashboard',on:{click:()=>{App._configState=null;App.configPrefill=null;App.screen='dashboard';render();}}}));
+  app.appendChild(el('button',{class:'link-back',text:'← Retour au dashboard',on:{click:()=>{App._configState=null;App.configPrefill=null;App.dedupModal=null;App.screen='dashboard';render();}}}));
   app.appendChild(el('h1',{text:'Nouvelle partie'}));
 
   if(lists.length===0){
@@ -624,77 +785,94 @@ function renderConfig(app){
   app.appendChild(card);
 
   const card2 = el('div',{class:'card'});
-  card2.appendChild(el('h2',{text:'Liste de questions'}));
-  const select = el('select',{});
+  card2.appendChild(el('h2',{text:'Liste(s) de questions'}));
+  card2.appendChild(el('p',{class:'small',attrs:{style:'margin-top:-8px;margin-bottom:12px;'},text:'Sélectionne une ou plusieurs listes à combiner pour cette partie.'}));
   lists.forEach(l=>{
-    const opt = el('option',{text:`${l.name} (${l.actions.length} action(s), ${l.truths.length} vérité(s))`,attrs:{value:l.id}});
-    if(l.id===cs.listId) opt.selected = true;
-    select.appendChild(opt);
+    const label = el('label',{attrs:{style:'display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;'}});
+    const cb = el('input',{attrs:{type:'checkbox'}});
+    cb.checked = cs.listIds.includes(l.id);
+    cb.addEventListener('change', e=>{
+      if(e.target.checked){
+        cs.listIds.push(l.id);
+      } else {
+        cs.listIds = cs.listIds.filter(id=>id!==l.id);
+      }
+      syncLaunchButton();
+    });
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(`${l.name} (${l.actions.length} action(s), ${l.truths.length} vérité(s))`));
+    card2.appendChild(label);
   });
-  select.addEventListener('change', e=>{ cs.listId = e.target.value; });
-  card2.appendChild(select);
 
   const checkboxRow = el('label',{attrs:{style:'display:flex;align-items:center;gap:8px;margin-top:16px;cursor:pointer;'}});
   const checkbox = el('input',{attrs:{type:'checkbox'}});
   checkbox.checked = cs.sansRemise;
   checkbox.addEventListener('change', e=>{ cs.sansRemise = e.target.checked; });
   checkboxRow.appendChild(checkbox);
-  checkboxRow.appendChild(document.createTextNode('Sans remise (chaque question ne sort qu\'une fois par partie)'));
+  checkboxRow.appendChild(document.createTextNode('Sans remise'));
+  checkboxRow.appendChild(buildRemiseInfo());
   card2.appendChild(checkboxRow);
+
+  const jokerField = el('div',{class:'field',attrs:{style:'margin-top:16px;margin-bottom:0;'}});
+  jokerField.appendChild(el('label',{text:'Nombre de jokers par joueur (pour passer une question)'}));
+  const jokerInput = el('input',{attrs:{type:'number',min:'0',max:'20'},value:String(cs.jokersMax)});
+  jokerInput.addEventListener('input', e=>{
+    const v = parseInt(e.target.value,10);
+    cs.jokersMax = (isNaN(v)||v<0) ? 0 : v;
+  });
+  jokerField.appendChild(jokerInput);
+  card2.appendChild(jokerField);
   app.appendChild(card2);
 
   const launchBtn = el('button',{class:'btn btn-nav btn-block',text:'Lancer la partie',attrs:{id:'launch-btn'},on:{click:launchGame}});
   app.appendChild(launchBtn);
 
+  if(App.dedupModal) renderDedupModal(app);
+
   function syncLaunchButton(){
     const validPlayers = cs.players.filter(p=>p.trim().length>0).length;
-    document.getElementById('launch-btn').disabled = !(validPlayers>=2 && cs.listId);
+    const btn = document.getElementById('launch-btn');
+    if(btn) btn.disabled = !(validPlayers>=2 && cs.listIds.length>0);
   }
   syncLaunchButton();
 
   function launchGame(){
     const names = cs.players.map(p=>p.trim()).filter(Boolean);
-    if(names.length<2 || !cs.listId) return;
-    const list = loadLists().find(l=>l.id===cs.listId);
-    if(!list) return;
-    const game = {
-      listId: list.id,
-      players: names,
-      sansRemise: cs.sansRemise,
-      actionsTotal: list.actions.length,
-      truthsTotal: list.truths.length,
-      actionsPool: list.actions.map(a=>a.text).slice(),
-      truthsPool: list.truths.map(t=>t.text).slice(),
-      queue: [],
-      currentPlayerIndex: 0,
-      phase: 'choosing',
-      currentCategory: null,
-      currentQuestionText: null,
-      justExhausted: null,
-      exhaustedCategory: null,
-      otherHasStock: false
-    };
-    game.queue = shuffle(names.map((_,i)=>i));
-    game.currentPlayerIndex = game.queue.shift();
-    saveGame(game);
-    App._configState = null;
-    App.configPrefill = null;
-    App.screen='game';
-    render();
+    if(names.length<2 || cs.listIds.length===0) return;
+    const allLists = loadLists();
+    const selectedLists = cs.listIds.map(id=>allLists.find(l=>l.id===id)).filter(Boolean);
+    if(selectedLists.length===0) return;
+    const combined = buildCombinedPools(selectedLists);
+    if(selectedLists.length>1 && combined.duplicates.length>0){
+      App.dedupModal = {combined, names, selectedLists, sansRemise:cs.sansRemise, jokersMax:cs.jokersMax};
+      render();
+      return;
+    }
+    finalizeLaunch(combined, names, selectedLists, cs.sansRemise, cs.jokersMax);
   }
 }
 
 /* ================= 4. ECRAN DE JEU ================= */
-function categoryAvailable(game, cat){
-  if(cat==='action') return game.sansRemise ? game.actionsPool.length>0 : game.actionsTotal>0;
-  return game.sansRemise ? game.truthsPool.length>0 : game.truthsTotal>0;
+function categoryAvailable(game, cat, playerIndex){
+  if(game.sansRemise){
+    const pool = cat==='action' ? game.actionsPool : game.truthsPool;
+    return pool.length>0;
+  }
+  // avec remise : une question déjà vue par CE joueur ne doit pas lui retomber dessus,
+  // mais reste disponible pour les autres joueurs.
+  const poolFull = cat==='action' ? game.actionsPoolFull : game.truthsPoolFull;
+  const seenArr = (game.seen && game.seen[cat] && game.seen[cat][playerIndex]) || [];
+  const seenSet = new Set(seenArr);
+  return poolFull.some(t=>!seenSet.has(t));
 }
 
 function renderGame(app){
   let game = loadGame();
   if(!game){ App.screen='dashboard'; render(); return; }
-  const list = loadLists().find(l=>l.id===game.listId);
-  const listName = list ? list.name : 'Liste';
+  const listName = game.listNames || (function(){
+    const list = loadLists().find(l=>l.id===game.listId);
+    return list ? list.name : 'Liste';
+  })();
 
   app.appendChild(el('div',{class:'top-bar'},[
     el('span',{class:'small',text:listName}),
@@ -723,7 +901,7 @@ function renderGame(app){
   const back = el('div',{class:'flip-face back'},[
     el('div',{class:'category-tag',text: game.currentCategory==='action'?'ACTION':'VÉRITÉ'}),
     el('div',{class:'question-text',text: game.currentQuestionText ?
-      `${playerName} doit ${game.currentCategory==='action'?'faire une action':'répondre à une vérité'} : ${game.currentQuestionText}` : ''})
+      `${playerName} : ${game.currentQuestionText}` : ''})
   ]);
   flipCard.appendChild(front);
   flipCard.appendChild(back);
@@ -731,22 +909,54 @@ function renderGame(app){
   app.appendChild(scene);
 
   if(game.phase==='choosing'){
-    const canAction = categoryAvailable(game,'action');
-    const canVerite = categoryAvailable(game,'verite');
-    const row = el('div',{class:'row'});
-    if(canAction) row.appendChild(el('button',{class:'btn btn-action btn-block',text:'Action',on:{click:()=>drawQuestion('action')}}));
-    if(canVerite) row.appendChild(el('button',{class:'btn btn-action btn-block',text:'Vérité',on:{click:()=>drawQuestion('verite')}}));
-    app.appendChild(row);
+    const canAction = categoryAvailable(game,'action', game.currentPlayerIndex);
+    const canVerite = categoryAvailable(game,'verite', game.currentPlayerIndex);
+    if(!canAction && !canVerite){
+      app.appendChild(el('div',{class:'card center'},[
+        el('p',{text:`${playerName} a déjà eu toutes les questions disponibles dans cette liste.`})
+      ]));
+      app.appendChild(el('button',{class:'btn btn-nav btn-block',text:'Joueur suivant',on:{click:()=>{
+        const g = loadGame();
+        advanceTurn(g);
+        saveGame(g);
+        render();
+      }}}));
+    } else {
+      const row = el('div',{class:'row'});
+      if(canAction) row.appendChild(el('button',{class:'btn btn-action btn-block',text:'Action',on:{click:()=>drawQuestion('action')}}));
+      if(canVerite) row.appendChild(el('button',{class:'btn btn-action btn-block',text:'Vérité',on:{click:()=>drawQuestion('verite')}}));
+      app.appendChild(row);
+    }
   } else if(game.phase==='revealed'){
-    app.appendChild(el('button',{class:'btn btn-nav btn-block',text:'Suivant',on:{click:goNext}}));
+    const stack = el('div',{class:'stack'});
+    stack.appendChild(el('button',{class:'btn btn-nav btn-block',text:'Suivant',on:{click:goNext}}));
+    if(game.jokersMax>0){
+      const used = (game.jokersUsed && game.jokersUsed[game.currentPlayerIndex]) || 0;
+      const remaining = game.jokersMax - used;
+      const canJoker = remaining>0 && categoryAvailable(game, game.currentCategory, game.currentPlayerIndex);
+      stack.appendChild(el('button',{class:'btn btn-ghost btn-block',text:`🃏 Joker (${remaining} restant${remaining>1?'s':''})`,disabled:!canJoker,on:{click:useJoker}}));
+    }
+    app.appendChild(stack);
   }
 
-  function drawQuestion(cat){
-    const g = loadGame();
-    const pool = cat==='action' ? g.actionsPool : g.truthsPool;
-    const idx = Math.floor(Math.random()*pool.length);
-    const text = pool[idx];
-    if(g.sansRemise) pool.splice(idx,1);
+  function performDraw(g, cat, playerIndex){
+    let text;
+    if(g.sansRemise){
+      const pool = cat==='action' ? g.actionsPool : g.truthsPool;
+      const idx = Math.floor(Math.random()*pool.length);
+      text = pool[idx];
+      pool.splice(idx,1);
+    } else {
+      const poolFull = cat==='action' ? g.actionsPoolFull : g.truthsPoolFull;
+      if(!g.seen) g.seen = {action:g.players.map(()=>[]), verite:g.players.map(()=>[])};
+      const seenArr = g.seen[cat][playerIndex] || [];
+      const seenSet = new Set(seenArr);
+      const available = poolFull.filter(t=>!seenSet.has(t));
+      const idx = Math.floor(Math.random()*available.length);
+      text = available[idx];
+      if(!g.seen[cat][playerIndex]) g.seen[cat][playerIndex] = [];
+      g.seen[cat][playerIndex].push(text);
+    }
     g.currentCategory = cat;
     g.currentQuestionText = text;
     g.phase = 'revealed';
@@ -756,6 +966,25 @@ function renderGame(app){
     } else {
       g.justExhausted = null;
     }
+  }
+
+  function drawQuestion(cat){
+    const g = loadGame();
+    performDraw(g, cat, g.currentPlayerIndex);
+    saveGame(g);
+    render();
+  }
+
+  function useJoker(){
+    const g = loadGame();
+    if(!(g.jokersMax>0)) return;
+    if(!g.jokersUsed) g.jokersUsed = g.players.map(()=>0);
+    const used = g.jokersUsed[g.currentPlayerIndex] || 0;
+    if(used>=g.jokersMax) return;
+    const cat = g.currentCategory;
+    if(!categoryAvailable(g, cat, g.currentPlayerIndex)) return;
+    g.jokersUsed[g.currentPlayerIndex] = used + 1;
+    performDraw(g, cat, g.currentPlayerIndex);
     saveGame(g);
     render();
   }
@@ -773,7 +1002,7 @@ function renderGame(app){
     if(g.justExhausted){
       const other = g.justExhausted==='action' ? 'verite' : 'action';
       g.exhaustedCategory = g.justExhausted;
-      g.otherHasStock = categoryAvailable(g, other);
+      g.otherHasStock = categoryAvailable(g, other, g.currentPlayerIndex);
       g.justExhausted = null;
       g.phase = 'exhausted';
       saveGame(g);
@@ -822,16 +1051,22 @@ function renderEnd(app){
   const stack = el('div',{class:'stack'});
   stack.appendChild(el('button',{class:'btn btn-nav btn-block',text:'Recommencer',on:{click:()=>{
     if(!game) { App.screen='dashboard'; render(); return; }
-    const list = loadLists().find(l=>l.id===game.listId);
-    if(!list){ saveGame(null); App.screen='dashboard'; render(); return; }
+    const actionsFull = game.actionsPoolFull || game.actionsPool.slice();
+    const truthsFull = game.truthsPoolFull || game.truthsPool.slice();
     const newGame = {
-      listId: list.id,
+      listIds: game.listIds || (game.listId ? [game.listId] : []),
+      listNames: game.listNames || '',
       players: game.players.slice(),
       sansRemise: game.sansRemise,
-      actionsTotal: list.actions.length,
-      truthsTotal: list.truths.length,
-      actionsPool: list.actions.map(a=>a.text).slice(),
-      truthsPool: list.truths.map(t=>t.text).slice(),
+      jokersMax: game.jokersMax || 0,
+      jokersUsed: game.players.map(()=>0),
+      seen: { action: game.players.map(()=>[]), verite: game.players.map(()=>[]) },
+      actionsTotal: actionsFull.length,
+      truthsTotal: truthsFull.length,
+      actionsPoolFull: actionsFull.slice(),
+      truthsPoolFull: truthsFull.slice(),
+      actionsPool: actionsFull.slice(),
+      truthsPool: truthsFull.slice(),
       queue: [],
       currentPlayerIndex: 0,
       phase:'choosing',
@@ -845,7 +1080,12 @@ function renderEnd(app){
   }}}));
   stack.appendChild(el('button',{class:'btn btn-ghost btn-block',text:'Changer les joueurs',on:{click:()=>{
     if(!game){ App.screen='dashboard'; render(); return; }
-    App.configPrefill = {listId:game.listId, sansRemise:game.sansRemise, players:[]};
+    App.configPrefill = {
+      listIds: game.listIds || (game.listId ? [game.listId] : []),
+      sansRemise: game.sansRemise,
+      jokersMax: game.jokersMax || 0,
+      players:[]
+    };
     App._configState = null;
     saveGame(null);
     App.screen='config'; render();
@@ -883,6 +1123,12 @@ function shareSite(){
 renderSiteQr();
 const shareBtn = document.getElementById('site-share-btn');
 if(shareBtn) shareBtn.addEventListener('click', shareSite);
+
+document.addEventListener('click', function(e){
+  document.querySelectorAll('.info-tooltip.show').forEach(t=>{
+    if(!t.parentElement.contains(e.target)) t.classList.remove('show');
+  });
+});
 
 tryAutoImportFromURL();
 const existingGame = loadGame();
