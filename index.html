@@ -174,7 +174,7 @@
   .site-share-btn{ display:none; }
 }
 @media (max-width: 1150px){
-  #app{ padding-bottom:90px; }
+  #app.has-share-pad{ padding-bottom:90px; }
 }
   .info-wrap{position:relative;display:inline-flex;margin-left:6px;vertical-align:middle;}
   .info-icon{
@@ -258,6 +258,10 @@ let App = {
 function render(){
   const app = document.getElementById('app');
   app.innerHTML = '';
+  const onDashboard = App.screen === 'dashboard';
+  const shareBtn = document.getElementById('site-share-btn');
+  if(shareBtn) shareBtn.style.display = onDashboard ? '' : 'none';
+  app.classList.toggle('has-share-pad', onDashboard);
   if(App.screen === 'dashboard') renderDashboard(app);
   else if(App.screen === 'edit') renderEdit(app);
   else if(App.screen === 'config') renderConfig(app);
