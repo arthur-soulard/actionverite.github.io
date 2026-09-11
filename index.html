@@ -19,6 +19,12 @@
     --text-light:#6b6152;
     --danger:#b5533a;
     --white:#ffffff;
+    --action:#6F4E37;
+    --action-dark:#5A3E2B;
+    --verite:#C9A66B;
+    --verite-dark:#A9834E;
+    --joker:#C9A227;
+    --joker-dark:#A9880A;
   }
   *{box-sizing:border-box;}
   body{
@@ -48,11 +54,44 @@
   .btn:disabled{opacity:.4;cursor:not-allowed;}
   .btn-nav{background:var(--avocado);}
   .btn-nav:hover:not(:disabled){background:var(--avocado-dark);}
-  .btn-action{background:var(--brown);}
-  .btn-action:hover:not(:disabled){background:var(--brown-dark);}
+  .btn-action{background:var(--action);}
+  .btn-action:hover:not(:disabled){background:var(--action-dark);}
+  .btn-verite{background:var(--verite);color:var(--text);}
+  .btn-verite:hover:not(:disabled){background:var(--verite-dark);color:#fff;}
+  .btn-joker{background:var(--joker);color:var(--text);}
+  .btn-joker:hover:not(:disabled){background:var(--joker-dark);color:#fff;}
   .btn-danger{background:var(--danger);}
   .btn-ghost{background:transparent;color:var(--text);border:2px solid var(--avocado);}
   .btn-block{width:100%;}
+  .btn-big{padding:18px 22px;font-size:19px;font-weight:600;}
+  .icon-btn{
+    background:none;border:2px solid var(--avocado);border-radius:50%;
+    width:38px;height:38px;font-size:17px;cursor:pointer;display:inline-flex;
+    align-items:center;justify-content:center;padding:0;flex-shrink:0;
+  }
+  .icon-btn:hover{background:var(--avocado);color:#fff;}
+  .rating-row{display:flex;gap:18px;justify-content:center;margin:-4px 0 18px;}
+  .rating-btn{
+    background:none;border:2px solid transparent;border-radius:8px;
+    font-size:26px;cursor:pointer;padding:4px 12px;opacity:.45;line-height:1;
+  }
+  .rating-btn:hover{opacity:.8;}
+  .rating-btn.active-like{opacity:1;border-color:var(--avocado);}
+  .rating-btn.active-dislike{opacity:1;border-color:var(--danger);}
+  .joker-popup-modal{position:relative;text-align:center;padding:34px 26px;max-width:320px;}
+  .joker-popup-close{
+    position:absolute;top:6px;right:6px;width:38px;height:38px;border-radius:50%;
+    border:none;background:var(--bg);font-size:18px;cursor:pointer;
+  }
+  .joker-popup-text{font-size:18px;font-weight:600;margin:10px 0 0;}
+  .tab-row{display:flex;gap:8px;margin-bottom:16px;}
+  .tab-btn{
+    background:none;border:none;border-bottom:3px solid transparent;
+    padding:8px 4px;font-family:inherit;font-size:15px;font-weight:600;
+    color:var(--text-light);cursor:pointer;
+  }
+  .tab-btn.active{color:var(--text);border-bottom-color:var(--avocado);}
+  .hardness-row .btn{min-width:44px;padding:10px;}
   .row{display:flex;gap:10px;flex-wrap:wrap;}
   .card{
     border:2px solid var(--brown);
@@ -122,12 +161,14 @@
     text-align:center;
   }
   .flip-face.back{transform:rotateY(180deg);}
-  .player-name{font-size:26px;font-weight:700;color:var(--brown-dark);}
-  .question-text{font-size:19px;font-weight:500;line-height:1.5;}
+  .player-name{font-size:30px;font-weight:700;color:var(--brown-dark);}
+  .question-text{font-size:22px;font-weight:500;line-height:1.5;}
   .category-tag{
-    display:inline-block;margin-bottom:14px;font-size:12px;font-weight:600;
-    color:var(--avocado-dark);
+    display:inline-block;margin-bottom:14px;font-size:14px;font-weight:700;
+    letter-spacing:1px;color:var(--avocado-dark);
   }
+  .category-tag.action{color:var(--action);}
+  .category-tag.verite{color:var(--verite-dark);}
   .fade{animation:fadeIn .4s ease;}
   @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
   .center{text-align:center;}
@@ -195,6 +236,10 @@
   .info-wrap:hover .info-tooltip{display:block;}
   .info-tooltip.show{display:block;}
   @media(max-width:480px){.info-tooltip{width:190px;left:-90px;}}
+  .card.card-action{border-color:var(--action);}
+  .card.card-action h2{color:var(--action);}
+  .card.card-verite{border-color:var(--verite);}
+  .card.card-verite h2{color:var(--verite-dark);}
 </style>
 </head>
 <body>
@@ -215,7 +260,18 @@ const QR_LIMIT = 2000;
 function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
 
 function loadLists(){
-  try{ return JSON.parse(localStorage.getItem(LS_LISTS)) || []; }catch(e){ return []; }
+  let lists;
+  try{ lists = JSON.parse(localStorage.getItem(LS_LISTS)) || []; }catch(e){ lists = []; }
+  lists.forEach(l=>{
+    if(!l.hardness || l.hardness<1 || l.hardness>5) l.hardness = 3;
+    ['actions','truths'].forEach(k=>{
+      (l[k]||[]).forEach(q=>{
+        if(q.rating===undefined) q.rating = null;
+        if(q.skipCount===undefined) q.skipCount = 0;
+      });
+    });
+  });
+  return lists;
 }
 function saveLists(lists){ localStorage.setItem(LS_LISTS, JSON.stringify(lists)); }
 
@@ -244,6 +300,36 @@ function showToast(msg, ms=3000){
   showToast._timer = setTimeout(()=>t.classList.remove('show'), ms);
 }
 
+function catToKey(cat){ return cat==='action' ? 'actions' : 'truths'; }
+
+function getQuestionRating(listId, cat, qid){
+  const list = loadLists().find(l=>l.id===listId);
+  if(!list) return null;
+  const q = list[catToKey(cat)].find(x=>x.id===qid);
+  return q ? (q.rating||null) : null;
+}
+
+function setQuestionRating(listId, cat, qid, rating){
+  const lists = loadLists();
+  const list = lists.find(l=>l.id===listId);
+  if(!list) return;
+  const q = list[catToKey(cat)].find(x=>x.id===qid);
+  if(!q) return;
+  q.rating = (q.rating===rating) ? null : rating;
+  saveLists(lists);
+}
+
+function incrementSkipCount(item, cat){
+  if(!item) return;
+  const lists = loadLists();
+  const list = lists.find(l=>l.id===item.listId);
+  if(!list) return;
+  const q = list[catToKey(cat)].find(x=>x.id===item.qid);
+  if(!q) return;
+  q.skipCount = (q.skipCount||0) + 1;
+  saveLists(lists);
+}
+
 /* ---------- État global de l'app (navigation) ---------- */
 let App = {
   screen: 'dashboard',   // dashboard | edit | config | game | end
@@ -252,6 +338,8 @@ let App = {
   configPrefill: null,   // pour "changer les joueurs": {listId, sansRemise}
   mergeModal: null,      // état de la modale de fusion entre listes
   mergeUndo: null,       // sauvegarde avant la dernière fusion (pour pouvoir l'annuler)
+  editTab: 'questions',  // onglet actif dans l'écran d'édition : questions | stats
+  jokerStatusOpen: false, // modal "jokers restants" ouverte pendant la partie
 };
 
 /* ================= RENDU PRINCIPAL ================= */
@@ -297,9 +385,10 @@ function renderDashboard(app){
       }}}),
       el('button',{class:'btn btn-ghost',text:'+ Créer une nouvelle liste',on:{click:()=>{
         App.editingListId = null;
-        App.draft = {name:'', actions:[], truths:[]};
+        App.draft = {name:'', hardness:3, actions:[], truths:[]};
         App.mergeUndo = null;
         App.editingQuestion = null;
+        App.editTab = 'questions';
         App.screen='edit'; render();
       }}})
     ])
@@ -314,7 +403,7 @@ function renderDashboard(app){
       const item = el('div',{class:'dashboard-item'},[
         el('div',{class:'info'},[
           el('h3',{text:list.name}),
-          el('p',{class:'small',text:`${list.actions.length} action(s) · ${list.truths.length} vérité(s)`})
+          el('p',{class:'small',text:`${list.actions.length} action(s) · ${list.truths.length} vérité(s) · niveau ${list.hardness||3}/5`})
         ]),
         el('div',{class:'row'},[
           el('button',{class:'btn btn-ghost',text:'Modifier',on:{click:()=>{
@@ -322,6 +411,7 @@ function renderDashboard(app){
             App.draft = JSON.parse(JSON.stringify(list));
             App.mergeUndo = null;
             App.editingQuestion = null;
+            App.editTab = 'questions';
             App.screen='edit'; render();
           }}}),
           el('button',{class:'btn btn-danger',text:'Supprimer',on:{click:()=>{
@@ -338,6 +428,41 @@ function renderDashboard(app){
 }
 
 /* ================= 2. CREATION / EDITION DE LISTE ================= */
+function buildHardnessField(d){
+  const wrap = el('div',{class:'field'});
+  wrap.appendChild(el('label',{text:'Niveau de difficulté de la liste (1 = soft, 5 = hard)'}));
+  const row = el('div',{class:'row hardness-row'});
+  for(let n=1;n<=5;n++){
+    const active = (d.hardness||3)===n;
+    row.appendChild(el('button',{class:'btn '+(active?'btn-nav':'btn-ghost'),text:String(n),on:{click:()=>{ d.hardness=n; render(); }}}));
+  }
+  wrap.appendChild(row);
+  return wrap;
+}
+
+function buildStatsView(d){
+  const wrap = el('div',{});
+  [['actions','Actions'],['truths','Vérités']].forEach(([key,label])=>{
+    const card = el('div',{class:'card'+(key==='actions'?' card-action':' card-verite')});
+    card.appendChild(el('h2',{text:label}));
+    const items = d[key].slice().sort((a,b)=>(b.skipCount||0)-(a.skipCount||0));
+    if(items.length===0){
+      card.appendChild(el('p',{class:'small',text:'Aucune question dans cette catégorie.'}));
+    } else {
+      items.forEach(q=>{
+        const ratingIcon = q.rating==='like' ? '👍' : (q.rating==='dislike' ? '👎' : '—');
+        card.appendChild(el('div',{class:'list-item'},[
+          el('span',{text:q.text, attrs:{style:'flex:1;padding-right:10px;'}}),
+          el('span',{class:'small', text:`Sautée ${q.skipCount||0}x`, attrs:{style:'margin-right:12px;white-space:nowrap;'}}),
+          el('span',{text:ratingIcon})
+        ]));
+      });
+    }
+    wrap.appendChild(card);
+  });
+  return wrap;
+}
+
 function renderEdit(app){
   const d = App.draft;
   const isNew = App.editingListId===null;
@@ -350,35 +475,46 @@ function renderEdit(app){
     el('input',{attrs:{type:'text',placeholder:'Ex : Soirée entre amis'},value:d.name,on:{input:(e)=>{d.name=e.target.value;}}})
   ]));
 
-  const twoCol = el('div',{class:'two-col'});
-  twoCol.appendChild(buildCategoryEditor('Actions','actions'));
-  twoCol.appendChild(buildCategoryEditor('Vérités','truths'));
-  app.appendChild(twoCol);
+  app.appendChild(buildHardnessField(d));
 
-  const toolsRow = el('div',{class:'row',attrs:{style:'margin-top:20px;'}},[
-    el('button',{class:'btn btn-ghost',text:'Fusionner une autre liste',on:{click:openMergeModal}}),
-    el('button',{class:'btn btn-ghost',text:'Exporter en QR code',on:{click:openQrModal}}),
-  ]);
-  if(App.mergeUndo){
-    toolsRow.appendChild(el('button',{class:'btn btn-ghost',text:'↩ Annuler la dernière fusion',on:{click:()=>{
-      d.actions = App.mergeUndo.actions;
-      d.truths = App.mergeUndo.truths;
-      App.mergeUndo = null;
-      showToast('Fusion annulée.');
-      render();
-    }}}));
+  const tabRow = el('div',{class:'tab-row'});
+  tabRow.appendChild(el('button',{class:'tab-btn'+(App.editTab==='questions'?' active':''),text:'Questions',on:{click:()=>{App.editTab='questions';render();}}}));
+  tabRow.appendChild(el('button',{class:'tab-btn'+(App.editTab==='stats'?' active':''),text:'Statistiques',on:{click:()=>{App.editTab='stats';render();}}}));
+  app.appendChild(tabRow);
+
+  if(App.editTab==='stats'){
+    app.appendChild(buildStatsView(d));
+  } else {
+    const twoCol = el('div',{class:'two-col'});
+    twoCol.appendChild(buildCategoryEditor('Actions','actions'));
+    twoCol.appendChild(buildCategoryEditor('Vérités','truths'));
+    app.appendChild(twoCol);
+
+    const toolsRow = el('div',{class:'row',attrs:{style:'margin-top:20px;'}},[
+      el('button',{class:'btn btn-ghost',text:'Fusionner une autre liste',on:{click:openMergeModal}}),
+      el('button',{class:'btn btn-ghost',text:'Exporter en QR code',on:{click:openQrModal}}),
+    ]);
+    if(App.mergeUndo){
+      toolsRow.appendChild(el('button',{class:'btn btn-ghost',text:'↩ Annuler la dernière fusion',on:{click:()=>{
+        d.actions = App.mergeUndo.actions;
+        d.truths = App.mergeUndo.truths;
+        App.mergeUndo = null;
+        showToast('Fusion annulée.');
+        render();
+      }}}));
+    }
+    app.appendChild(toolsRow);
   }
-  app.appendChild(toolsRow);
 
   const totalQuestions = d.actions.length + d.truths.length;
   app.appendChild(el('div',{attrs:{style:'margin-top:24px;'}},[
     el('button',{class:'btn btn-nav',text:'Enregistrer',disabled:totalQuestions===0,on:{click:()=>{
       const lists = loadLists();
       if(isNew){
-        lists.push({id:uid(), name:d.name.trim()||'Liste sans nom', actions:d.actions, truths:d.truths});
+        lists.push({id:uid(), name:d.name.trim()||'Liste sans nom', hardness:d.hardness||3, actions:d.actions, truths:d.truths});
       } else {
         const idx = lists.findIndex(l=>l.id===App.editingListId);
-        if(idx>=0) lists[idx] = {id:App.editingListId, name:d.name.trim()||'Liste sans nom', actions:d.actions, truths:d.truths};
+        if(idx>=0) lists[idx] = {id:App.editingListId, name:d.name.trim()||'Liste sans nom', hardness:d.hardness||3, actions:d.actions, truths:d.truths};
       }
       saveLists(lists);
       App.mergeUndo = null;
@@ -395,7 +531,7 @@ function renderEdit(app){
   if(App.qrModalOpen) renderQrModal(app);
 
   function buildCategoryEditor(title, key){
-    const wrap = el('div',{class:'card'});
+    const wrap = el('div',{class:'card'+(key==='actions'?' card-action':' card-verite')});
     wrap.appendChild(el('h2',{text:title}));
     const inputRow = el('div',{class:'row',attrs:{style:'margin-bottom:14px;'}});
     const input = el('input',{attrs:{type:'text',placeholder:`Nouvelle ${title.toLowerCase().slice(0,-1)}...`}});
@@ -403,7 +539,7 @@ function renderEdit(app){
     const addFn = ()=>{
       const val = input.value.trim();
       if(!val) return;
-      d[key].push({id:uid(), text:val});
+      d[key].push({id:uid(), text:val, rating:null, skipCount:0});
       input.value='';
       render();
     };
@@ -611,8 +747,8 @@ function applyMerge(state){
   App.mergeUndo = { actions: App.draft.actions.slice(), truths: App.draft.truths.slice() };
   const excludedTexts = {actions:new Set(), truths:new Set()};
   state.duplicates.forEach(d=>{ if(d.exclude) excludedTexts[d.category].add(d.text); });
-  state.incoming.actions.forEach(t=>{ if(!excludedTexts.actions.has(t)) App.draft.actions.push({id:uid(), text:t}); });
-  state.incoming.truths.forEach(t=>{ if(!excludedTexts.truths.has(t)) App.draft.truths.push({id:uid(), text:t}); });
+  state.incoming.actions.forEach(t=>{ if(!excludedTexts.actions.has(t)) App.draft.actions.push({id:uid(), text:t, rating:null, skipCount:0}); });
+  state.incoming.truths.forEach(t=>{ if(!excludedTexts.truths.has(t)) App.draft.truths.push({id:uid(), text:t, rating:null, skipCount:0}); });
 }
 
 /* ----- Import automatique via ?data= ----- */
@@ -630,14 +766,14 @@ function tryAutoImportFromURL(){
     if(existing){
       const existingActions = new Set(existing.actions.map(a=>a.text));
       const existingTruths = new Set(existing.truths.map(t=>t.text));
-      const newActions = res.actions.filter(t=>!existingActions.has(t)).map(t=>({id:uid(),text:t}));
-      const newTruths = res.truths.filter(t=>!existingTruths.has(t)).map(t=>({id:uid(),text:t}));
+      const newActions = res.actions.filter(t=>!existingActions.has(t)).map(t=>({id:uid(),text:t,rating:null,skipCount:0}));
+      const newTruths = res.truths.filter(t=>!existingTruths.has(t)).map(t=>({id:uid(),text:t,rating:null,skipCount:0}));
       existing.actions.push(...newActions);
       existing.truths.push(...newTruths);
       saveLists(lists);
       showToast(`Liste "${name}" fusionnée depuis le QR code (doublons ignorés).`);
     } else {
-      lists.push({id:uid(), name, actions:res.actions.map(t=>({id:uid(),text:t})), truths:res.truths.map(t=>({id:uid(),text:t}))});
+      lists.push({id:uid(), name, hardness:3, actions:res.actions.map(t=>({id:uid(),text:t,rating:null,skipCount:0})), truths:res.truths.map(t=>({id:uid(),text:t,rating:null,skipCount:0}))});
       saveLists(lists);
       showToast(`Liste "${name}" importée depuis le QR code.`);
     }
@@ -672,7 +808,7 @@ function buildCombinedPools(selectedLists){
     selectedLists.forEach(list=>{
       list[cat].forEach(q=>{
         const isDup = seen.has(q.text);
-        const item = {text:q.text, exclude:isDup};
+        const item = {text:q.text, listId:list.id, qid:q.id, hardness:list.hardness||3, exclude:isDup};
         result[cat].push(item);
         if(isDup) result.duplicates.push({category:cat, text:q.text, ref:item});
         else seen.add(q.text);
@@ -682,9 +818,10 @@ function buildCombinedPools(selectedLists){
   return result;
 }
 
-function finalizeLaunch(combined, names, selectedLists, sansRemise, jokersMax){
-  const actionsFinal = combined.actions.filter(x=>!x.exclude).map(x=>x.text);
-  const truthsFinal = combined.truths.filter(x=>!x.exclude).map(x=>x.text);
+function finalizeLaunch(combined, names, selectedLists, sansRemise, jokersMax, order, progressif){
+  const mkItem = x => ({uid:`${x.listId}:${x.qid}`, listId:x.listId, qid:x.qid, text:x.text, hardness:x.hardness});
+  const actionsFinal = combined.actions.filter(x=>!x.exclude).map(mkItem);
+  const truthsFinal = combined.truths.filter(x=>!x.exclude).map(mkItem);
   const game = {
     listIds: selectedLists.map(l=>l.id),
     listNames: selectedLists.map(l=>l.name).join(' + '),
@@ -699,17 +836,25 @@ function finalizeLaunch(combined, names, selectedLists, sansRemise, jokersMax){
     truthsPoolFull: truthsFinal.slice(),
     actionsPool: actionsFinal.slice(),
     truthsPool: truthsFinal.slice(),
+    order: order==='chain' ? 'chain' : 'random',
+    progressif: !!(progressif && sansRemise),
     queue: [],
     currentPlayerIndex: 0,
     phase: 'choosing',
     currentCategory: null,
     currentQuestionText: null,
+    currentItem: null,
+    jokerPopup: null,
     justExhausted: null,
     exhaustedCategory: null,
     otherHasStock: false
   };
-  game.queue = shuffle(names.map((_,i)=>i));
-  game.currentPlayerIndex = game.queue.shift();
+  if(game.order==='chain'){
+    game.currentPlayerIndex = Math.floor(Math.random()*names.length);
+  } else {
+    game.queue = shuffle(names.map((_,i)=>i));
+    game.currentPlayerIndex = game.queue.shift();
+  }
   saveGame(game);
   App._configState = null;
   App.configPrefill = null;
@@ -739,7 +884,7 @@ function renderDedupModal(app){
   });
   modal.appendChild(el('div',{class:'row',attrs:{style:'margin-top:16px;'}},[
     el('button',{class:'btn btn-nav',text:'Lancer la partie',on:{click:()=>{
-      finalizeLaunch(state.combined, state.names, state.selectedLists, state.sansRemise, state.jokersMax);
+      finalizeLaunch(state.combined, state.names, state.selectedLists, state.sansRemise, state.jokersMax, state.order, state.progressif);
     }}}),
     el('button',{class:'btn btn-ghost',text:'Annuler',on:{click:()=>{App.dedupModal=null;render();}}}),
   ]));
@@ -749,7 +894,7 @@ function renderDedupModal(app){
 
 function renderConfig(app){
   const lists = loadLists().filter(l=>l.actions.length+l.truths.length>0);
-  const pre = App.configPrefill || {listIds:null, listId:null, sansRemise:false, jokersMax:0, players:[]};
+  const pre = App.configPrefill || {listIds:null, listId:null, sansRemise:false, jokersMax:0, players:[], order:'random', progressif:false};
   if(!App._configState){
     let initListIds = pre.listIds ? pre.listIds.slice() : (pre.listId ? [pre.listId] : (lists[0] ? [lists[0].id] : []));
     initListIds = initListIds.filter(id=>lists.some(l=>l.id===id));
@@ -757,7 +902,9 @@ function renderConfig(app){
       players: pre.players && pre.players.length ? pre.players.slice() : ['',''],
       listIds: initListIds,
       sansRemise: !!pre.sansRemise,
-      jokersMax: pre.jokersMax || 0
+      jokersMax: pre.jokersMax || 0,
+      order: pre.order === 'chain' ? 'chain' : 'random',
+      progressif: !!pre.progressif
     };
   }
   const cs = App._configState;
@@ -804,21 +951,35 @@ function renderConfig(app){
       } else {
         cs.listIds = cs.listIds.filter(id=>id!==l.id);
       }
-      syncLaunchButton();
+      render();
     });
     label.appendChild(cb);
-    label.appendChild(document.createTextNode(`${l.name} (${l.actions.length} action(s), ${l.truths.length} vérité(s))`));
+    label.appendChild(document.createTextNode(`${l.name} (${l.actions.length} action(s), ${l.truths.length} vérité(s), niveau ${l.hardness||3}/5)`));
     card2.appendChild(label);
   });
 
   const checkboxRow = el('label',{attrs:{style:'display:flex;align-items:center;gap:8px;margin-top:16px;cursor:pointer;'}});
   const checkbox = el('input',{attrs:{type:'checkbox'}});
   checkbox.checked = cs.sansRemise;
-  checkbox.addEventListener('change', e=>{ cs.sansRemise = e.target.checked; });
+  checkbox.addEventListener('change', e=>{ cs.sansRemise = e.target.checked; if(!cs.sansRemise) cs.progressif = false; render(); });
   checkboxRow.appendChild(checkbox);
   checkboxRow.appendChild(document.createTextNode('Sans remise'));
   checkboxRow.appendChild(buildRemiseInfo());
   card2.appendChild(checkboxRow);
+
+  const selectedListsForHardness = cs.listIds.map(id=>lists.find(l=>l.id===id)).filter(Boolean);
+  const distinctHardness = new Set(selectedListsForHardness.map(l=>l.hardness||3)).size;
+  if(cs.sansRemise && distinctHardness>1){
+    const progRow = el('label',{attrs:{style:'display:flex;align-items:center;gap:8px;margin-top:12px;cursor:pointer;'}});
+    const progCb = el('input',{attrs:{type:'checkbox'}});
+    progCb.checked = cs.progressif;
+    progCb.addEventListener('change', e=>{ cs.progressif = e.target.checked; });
+    progRow.appendChild(progCb);
+    progRow.appendChild(document.createTextNode('Mode progressif (les questions les plus soft sortent en premier, les plus hard en fin de partie)'));
+    card2.appendChild(progRow);
+  } else {
+    cs.progressif = false;
+  }
 
   const jokerField = el('div',{class:'field',attrs:{style:'margin-top:16px;margin-bottom:0;'}});
   jokerField.appendChild(el('label',{text:'Nombre de jokers par joueur (pour passer une question)'}));
@@ -830,6 +991,24 @@ function renderConfig(app){
   jokerField.appendChild(jokerInput);
   card2.appendChild(jokerField);
   app.appendChild(card2);
+
+  const card3 = el('div',{class:'card'});
+  card3.appendChild(el('h2',{text:'Ordre des joueurs'}));
+  const orderRandomRow = el('label',{attrs:{style:'display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;'}});
+  const orderRandomRadio = el('input',{attrs:{type:'radio',name:'order-mode'}});
+  orderRandomRadio.checked = cs.order==='random';
+  orderRandomRadio.addEventListener('change', ()=>{ if(orderRandomRadio.checked) cs.order='random'; });
+  orderRandomRow.appendChild(orderRandomRadio);
+  orderRandomRow.appendChild(document.createTextNode('Aléatoire (l\'ordre de passage est tiré au sort)'));
+  card3.appendChild(orderRandomRow);
+  const orderChainRow = el('label',{attrs:{style:'display:flex;align-items:center;gap:8px;cursor:pointer;'}});
+  const orderChainRadio = el('input',{attrs:{type:'radio',name:'order-mode'}});
+  orderChainRadio.checked = cs.order==='chain';
+  orderChainRadio.addEventListener('change', ()=>{ if(orderChainRadio.checked) cs.order='chain'; });
+  orderChainRow.appendChild(orderChainRadio);
+  orderChainRow.appendChild(document.createTextNode('Désignation en chaîne (le premier est tiré au sort, puis chaque joueur choisit qui joue ensuite)'));
+  card3.appendChild(orderChainRow);
+  app.appendChild(card3);
 
   const launchBtn = el('button',{class:'btn btn-nav btn-block',text:'Lancer la partie',attrs:{id:'launch-btn'},on:{click:launchGame}});
   app.appendChild(launchBtn);
@@ -851,11 +1030,11 @@ function renderConfig(app){
     if(selectedLists.length===0) return;
     const combined = buildCombinedPools(selectedLists);
     if(selectedLists.length>1 && combined.duplicates.length>0){
-      App.dedupModal = {combined, names, selectedLists, sansRemise:cs.sansRemise, jokersMax:cs.jokersMax};
+      App.dedupModal = {combined, names, selectedLists, sansRemise:cs.sansRemise, jokersMax:cs.jokersMax, order:cs.order, progressif:cs.progressif};
       render();
       return;
     }
-    finalizeLaunch(combined, names, selectedLists, cs.sansRemise, cs.jokersMax);
+    finalizeLaunch(combined, names, selectedLists, cs.sansRemise, cs.jokersMax, cs.order, cs.progressif);
   }
 }
 
@@ -870,7 +1049,43 @@ function categoryAvailable(game, cat, playerIndex){
   const poolFull = cat==='action' ? game.actionsPoolFull : game.truthsPoolFull;
   const seenArr = (game.seen && game.seen[cat] && game.seen[cat][playerIndex]) || [];
   const seenSet = new Set(seenArr);
-  return poolFull.some(t=>!seenSet.has(t));
+  return poolFull.some(it=>!seenSet.has(it.uid));
+}
+
+function gameProgress(g){
+  const totalStart = (g.actionsTotal||0)+(g.truthsTotal||0);
+  if(totalStart<=0) return 0;
+  const remaining = (g.actionsPool?g.actionsPool.length:0)+(g.truthsPool?g.truthsPool.length:0);
+  const drawn = totalStart - remaining;
+  return Math.max(0, Math.min(1, drawn/totalStart));
+}
+
+function weightedPick(pool, target){
+  const weights = pool.map(it=>1/(1+Math.abs((it.hardness||3)-target)));
+  const total = weights.reduce((a,b)=>a+b,0);
+  if(total<=0) return Math.floor(Math.random()*pool.length);
+  let r = Math.random()*total;
+  for(let i=0;i<pool.length;i++){
+    r -= weights[i];
+    if(r<=0) return i;
+  }
+  return pool.length-1;
+}
+
+function advanceTurn(g){
+  if(g.order==='chain'){
+    g.phase='designating';
+    g.currentCategory=null;
+    g.currentQuestionText=null;
+    g.currentItem=null;
+    return;
+  }
+  if(g.queue.length===0) g.queue = shuffle(g.players.map((_,i)=>i));
+  g.currentPlayerIndex = g.queue.shift();
+  g.phase='choosing';
+  g.currentCategory=null;
+  g.currentQuestionText=null;
+  g.currentItem=null;
 }
 
 function renderGame(app){
@@ -881,13 +1096,18 @@ function renderGame(app){
     return list ? list.name : 'Liste';
   })();
 
+  const topBarRight = el('div',{class:'row',attrs:{style:'align-items:center;'}});
+  if(game.jokersMax>0){
+    topBarRight.appendChild(el('button',{class:'icon-btn',text:'👁',attrs:{title:'Voir les jokers restants'},on:{click:()=>{ App.jokerStatusOpen = true; render(); }}}));
+  }
+  topBarRight.appendChild(el('button',{class:'link-back',text:'Abandonner la partie',on:{click:()=>{
+    if(confirm('Abandonner la partie en cours et revenir au dashboard ?')){
+      saveGame(null); App.jokerStatusOpen=false; App.screen='dashboard'; render();
+    }
+  }}}));
   app.appendChild(el('div',{class:'top-bar'},[
     el('span',{class:'small',text:listName}),
-    el('button',{class:'link-back',text:'Abandonner la partie',on:{click:()=>{
-      if(confirm('Abandonner la partie en cours et revenir au dashboard ?')){
-        saveGame(null); App.screen='dashboard'; render();
-      }
-    }}})
+    topBarRight
   ]));
 
   if(game.phase==='exhausted'){
@@ -897,8 +1117,14 @@ function renderGame(app){
   if(game.phase==='finished'){
     App.screen='end'; render(); return;
   }
+  if(game.phase==='designating'){
+    renderDesignating(app, game);
+    if(App.jokerStatusOpen) renderJokerStatusModal(app, game);
+    return;
+  }
 
   const playerName = game.players[game.currentPlayerIndex];
+  const catClass = game.currentCategory==='action' ? 'action' : 'verite';
   const scene = el('div',{class:'flip-scene'});
   const flipCard = el('div',{class:'flip-card'+(game.phase==='revealed'?' flipped':'')});
 
@@ -906,7 +1132,7 @@ function renderGame(app){
     el('div',{class:'player-name',text:playerName})
   ]);
   const back = el('div',{class:'flip-face back'},[
-    el('div',{class:'category-tag',text: game.currentCategory==='action'?'ACTION':'VÉRITÉ'}),
+    el('div',{class:'category-tag '+catClass,text: game.currentCategory==='action'?'ACTION':'VÉRITÉ'}),
     el('div',{class:'question-text',text: game.currentQuestionText ?
       `${playerName} : ${game.currentQuestionText}` : ''})
   ]);
@@ -930,42 +1156,68 @@ function renderGame(app){
       }}}));
     } else {
       const row = el('div',{class:'row'});
-      if(canAction) row.appendChild(el('button',{class:'btn btn-action btn-block',text:'Action',on:{click:()=>drawQuestion('action')}}));
-      if(canVerite) row.appendChild(el('button',{class:'btn btn-action btn-block',text:'Vérité',on:{click:()=>drawQuestion('verite')}}));
+      if(canAction) row.appendChild(el('button',{class:'btn btn-action btn-block btn-big',text:'Action',on:{click:()=>drawQuestion('action')}}));
+      if(canVerite) row.appendChild(el('button',{class:'btn btn-verite btn-block btn-big',text:'Vérité',on:{click:()=>drawQuestion('verite')}}));
       app.appendChild(row);
     }
   } else if(game.phase==='revealed'){
-    const stack = el('div',{class:'stack'});
-    stack.appendChild(el('button',{class:'btn btn-nav btn-block',text:'Suivant',on:{click:goNext}}));
+    if(game.currentItem){
+      const curRating = getQuestionRating(game.currentItem.listId, game.currentCategory, game.currentItem.qid);
+      const ratingRow = el('div',{class:'rating-row'});
+      ratingRow.appendChild(el('button',{class:'rating-btn'+(curRating==='like'?' active-like':''),text:'👍',attrs:{title:'Question intéressante'},on:{click:()=>toggleRating('like')}}));
+      ratingRow.appendChild(el('button',{class:'rating-btn'+(curRating==='dislike'?' active-dislike':''),text:'👎',attrs:{title:'Question pas intéressante'},on:{click:()=>toggleRating('dislike')}}));
+      app.appendChild(ratingRow);
+    }
+    const nextLabel = game.currentCategory==='action' ? 'Fait' : 'Répondu';
+    const nextBtnClass = game.currentCategory==='action' ? 'btn-action' : 'btn-verite';
+    const row = el('div',{class:'row'});
+    row.appendChild(el('button',{class:'btn '+nextBtnClass+' btn-big',attrs:{style:'flex:1;'},text:nextLabel,on:{click:goNext}}));
     if(game.jokersMax>0){
       const used = (game.jokersUsed && game.jokersUsed[game.currentPlayerIndex]) || 0;
       const remaining = game.jokersMax - used;
       const canJoker = remaining>0 && categoryAvailable(game, game.currentCategory, game.currentPlayerIndex);
-      stack.appendChild(el('button',{class:'btn btn-ghost btn-block',text:`🃏 Joker (${remaining} restant${remaining>1?'s':''})`,disabled:!canJoker,on:{click:useJoker}}));
+      row.appendChild(el('button',{class:'btn btn-joker btn-big',attrs:{style:'flex:1;'},text:`🃏 Joker (${remaining})`,disabled:!canJoker,on:{click:useJoker}}));
     }
-    app.appendChild(stack);
+    app.appendChild(row);
+  }
+
+  if(App.jokerStatusOpen) renderJokerStatusModal(app, game);
+  if(game.jokerPopup) renderJokerPopup(app, game);
+
+  function toggleRating(rating){
+    const g = loadGame();
+    if(!g.currentItem) return;
+    setQuestionRating(g.currentItem.listId, g.currentCategory, g.currentItem.qid, rating);
+    render();
   }
 
   function performDraw(g, cat, playerIndex){
-    let text;
+    let item;
     if(g.sansRemise){
       const pool = cat==='action' ? g.actionsPool : g.truthsPool;
-      const idx = Math.floor(Math.random()*pool.length);
-      text = pool[idx];
+      let idx;
+      if(g.progressif){
+        const target = 1 + gameProgress(g)*4;
+        idx = weightedPick(pool, target);
+      } else {
+        idx = Math.floor(Math.random()*pool.length);
+      }
+      item = pool[idx];
       pool.splice(idx,1);
     } else {
       const poolFull = cat==='action' ? g.actionsPoolFull : g.truthsPoolFull;
       if(!g.seen) g.seen = {action:g.players.map(()=>[]), verite:g.players.map(()=>[])};
       const seenArr = g.seen[cat][playerIndex] || [];
       const seenSet = new Set(seenArr);
-      const available = poolFull.filter(t=>!seenSet.has(t));
+      const available = poolFull.filter(it=>!seenSet.has(it.uid));
       const idx = Math.floor(Math.random()*available.length);
-      text = available[idx];
+      item = available[idx];
       if(!g.seen[cat][playerIndex]) g.seen[cat][playerIndex] = [];
-      g.seen[cat][playerIndex].push(text);
+      g.seen[cat][playerIndex].push(item.uid);
     }
     g.currentCategory = cat;
-    g.currentQuestionText = text;
+    g.currentQuestionText = item.text;
+    g.currentItem = item;
     g.phase = 'revealed';
     if(g.sansRemise){
       const nowPool = cat==='action' ? g.actionsPool : g.truthsPool;
@@ -990,18 +1242,13 @@ function renderGame(app){
     if(used>=g.jokersMax) return;
     const cat = g.currentCategory;
     if(!categoryAvailable(g, cat, g.currentPlayerIndex)) return;
+    incrementSkipCount(g.currentItem, cat);
     g.jokersUsed[g.currentPlayerIndex] = used + 1;
     performDraw(g, cat, g.currentPlayerIndex);
+    const remaining = g.jokersMax - g.jokersUsed[g.currentPlayerIndex];
+    g.jokerPopup = {name: g.players[g.currentPlayerIndex], remaining};
     saveGame(g);
     render();
-  }
-
-  function advanceTurn(g){
-    if(g.queue.length===0) g.queue = shuffle(g.players.map((_,i)=>i));
-    g.currentPlayerIndex = g.queue.shift();
-    g.phase='choosing';
-    g.currentCategory=null;
-    g.currentQuestionText=null;
   }
 
   function goNext(){
@@ -1022,6 +1269,57 @@ function renderGame(app){
   }
 }
 
+function renderDesignating(app, game){
+  const prevName = game.players[game.currentPlayerIndex];
+  app.appendChild(el('div',{class:'card center'},[
+    el('h2',{text:`${prevName}, qui joue ensuite ?`})
+  ]));
+  const stack = el('div',{class:'stack'});
+  game.players.forEach((name,i)=>{
+    if(i===game.currentPlayerIndex) return;
+    stack.appendChild(el('button',{class:'btn btn-nav btn-block',text:name,on:{click:()=>{
+      const g = loadGame();
+      g.currentPlayerIndex = i;
+      g.phase='choosing';
+      g.currentCategory=null; g.currentQuestionText=null; g.currentItem=null;
+      saveGame(g); render();
+    }}}));
+  });
+  app.appendChild(stack);
+}
+
+function renderJokerStatusModal(app, game){
+  const overlay = el('div',{class:'modal-overlay',on:{click:(e)=>{ if(e.target===overlay){ App.jokerStatusOpen=false; render(); } }}});
+  const modal = el('div',{class:'modal'});
+  modal.appendChild(el('h2',{text:'Jokers restants'}));
+  game.players.forEach((name,i)=>{
+    const used = (game.jokersUsed && game.jokersUsed[i]) || 0;
+    const remaining = game.jokersMax - used;
+    modal.appendChild(el('p',{text:`${name} : ${remaining} joker${remaining>1?'s':''} restant${remaining>1?'s':''}`}));
+  });
+  modal.appendChild(el('div',{attrs:{style:'margin-top:12px;'}},[
+    el('button',{class:'btn btn-nav',text:'Fermer',on:{click:()=>{App.jokerStatusOpen=false;render();}}})
+  ]));
+  overlay.appendChild(modal);
+  app.appendChild(overlay);
+}
+
+function renderJokerPopup(app, game){
+  const p = game.jokerPopup;
+  const overlay = el('div',{class:'modal-overlay',on:{click:closeJokerPopup}});
+  const modal = el('div',{class:'modal joker-popup-modal',on:{click:(e)=>{ e.stopPropagation(); }}});
+  modal.appendChild(el('button',{class:'joker-popup-close',text:'✕',on:{click:closeJokerPopup}}));
+  modal.appendChild(el('div',{class:'joker-popup-text',text:`${p.name}, il te reste ${p.remaining} joker${p.remaining>1?'s':''} !`}));
+  overlay.appendChild(modal);
+  app.appendChild(overlay);
+}
+
+function closeJokerPopup(){
+  const g = loadGame();
+  if(g){ g.jokerPopup = null; saveGame(g); }
+  render();
+}
+
 function renderExhaustedScreen(app, game){
   const catLabel = game.exhaustedCategory==='action' ? 'Actions' : 'Vérités';
   app.appendChild(el('div',{class:'card center'},[
@@ -1032,10 +1330,7 @@ function renderExhaustedScreen(app, game){
   if(game.otherHasStock){
     row.appendChild(el('button',{class:'btn btn-nav btn-block',text:"Continuer avec l'autre catégorie",on:{click:()=>{
       const g = loadGame();
-      if(g.queue.length===0) g.queue = shuffle(g.players.map((_,i)=>i));
-      g.currentPlayerIndex = g.queue.shift();
-      g.phase='choosing';
-      g.currentCategory=null; g.currentQuestionText=null;
+      advanceTurn(g);
       saveGame(g); render();
     }}}));
   }
@@ -1074,14 +1369,20 @@ function renderEnd(app){
       truthsPoolFull: truthsFull.slice(),
       actionsPool: actionsFull.slice(),
       truthsPool: truthsFull.slice(),
+      order: game.order==='chain' ? 'chain' : 'random',
+      progressif: !!game.progressif,
       queue: [],
       currentPlayerIndex: 0,
       phase:'choosing',
-      currentCategory:null, currentQuestionText:null,
+      currentCategory:null, currentQuestionText:null, currentItem:null, jokerPopup:null,
       justExhausted:null, exhaustedCategory:null, otherHasStock:false
     };
-    newGame.queue = shuffle(newGame.players.map((_,i)=>i));
-    newGame.currentPlayerIndex = newGame.queue.shift();
+    if(newGame.order==='chain'){
+      newGame.currentPlayerIndex = Math.floor(Math.random()*newGame.players.length);
+    } else {
+      newGame.queue = shuffle(newGame.players.map((_,i)=>i));
+      newGame.currentPlayerIndex = newGame.queue.shift();
+    }
     saveGame(newGame);
     App.screen='game'; render();
   }}}));
@@ -1091,6 +1392,8 @@ function renderEnd(app){
       listIds: game.listIds || (game.listId ? [game.listId] : []),
       sansRemise: game.sansRemise,
       jokersMax: game.jokersMax || 0,
+      order: game.order==='chain' ? 'chain' : 'random',
+      progressif: !!game.progressif,
       players:[]
     };
     App._configState = null;
@@ -1099,6 +1402,7 @@ function renderEnd(app){
   }}}));
   stack.appendChild(el('button',{class:'btn btn-danger btn-block',text:'Terminer',on:{click:()=>{
     saveGame(null);
+    App.jokerStatusOpen=false;
     App.screen='dashboard'; render();
   }}}));
   app.appendChild(stack);
