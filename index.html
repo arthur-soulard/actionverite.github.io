@@ -1175,8 +1175,13 @@ function renderGame(app){
     if(game.jokersMax>0){
       const used = (game.jokersUsed && game.jokersUsed[game.currentPlayerIndex]) || 0;
       const remaining = game.jokersMax - used;
-      const canJoker = remaining>0 && categoryAvailable(game, game.currentCategory, game.currentPlayerIndex);
-      row.appendChild(el('button',{class:'btn btn-joker btn-big',attrs:{style:'flex:1;'},text:`🃏 Joker (${remaining})`,disabled:!canJoker,on:{click:useJoker}}));
+      const hasCharges = remaining>0;
+      const hasAlternative = categoryAvailable(game, game.currentCategory, game.currentPlayerIndex);
+      const canJoker = hasCharges && hasAlternative;
+      let jokerTitle = '';
+      if(!hasCharges) jokerTitle = 'Plus de joker disponible pour ce joueur.';
+      else if(!hasAlternative) jokerTitle = 'Aucune autre question disponible dans cette catégorie.';
+      row.appendChild(el('button',{class:'btn btn-joker btn-big',attrs:{style:'flex:1;', title:jokerTitle},text:`🃏 Joker (${remaining})`,disabled:!canJoker,on:{click:useJoker}}));
     }
     app.appendChild(row);
   }
@@ -1234,8 +1239,13 @@ function renderGame(app){
     render();
   }
 
+  function recentlyClosedPopup(g){
+    return g.jokerPopupClosedAt && (Date.now() - g.jokerPopupClosedAt) < 400;
+  }
+
   function useJoker(){
     const g = loadGame();
+    if(recentlyClosedPopup(g)) return;
     if(!(g.jokersMax>0)) return;
     if(!g.jokersUsed) g.jokersUsed = g.players.map(()=>0);
     const used = g.jokersUsed[g.currentPlayerIndex] || 0;
@@ -1253,6 +1263,7 @@ function renderGame(app){
 
   function goNext(){
     const g = loadGame();
+    if(recentlyClosedPopup(g)) return;
     if(g.justExhausted){
       const other = g.justExhausted==='action' ? 'verite' : 'action';
       g.exhaustedCategory = g.justExhausted;
@@ -1306,8 +1317,8 @@ function renderJokerStatusModal(app, game){
 
 function renderJokerPopup(app, game){
   const p = game.jokerPopup;
-  const overlay = el('div',{class:'modal-overlay',on:{click:closeJokerPopup}});
-  const modal = el('div',{class:'modal joker-popup-modal',on:{click:(e)=>{ e.stopPropagation(); }}});
+  const overlay = el('div',{class:'modal-overlay'});
+  const modal = el('div',{class:'modal joker-popup-modal'});
   modal.appendChild(el('button',{class:'joker-popup-close',text:'✕',on:{click:closeJokerPopup}}));
   modal.appendChild(el('div',{class:'joker-popup-text',text:`${p.name}, il te reste ${p.remaining} joker${p.remaining>1?'s':''} !`}));
   overlay.appendChild(modal);
@@ -1316,7 +1327,7 @@ function renderJokerPopup(app, game){
 
 function closeJokerPopup(){
   const g = loadGame();
-  if(g){ g.jokerPopup = null; saveGame(g); }
+  if(g){ g.jokerPopup = null; g.jokerPopupClosedAt = Date.now(); saveGame(g); }
   render();
 }
 
