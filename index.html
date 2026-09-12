@@ -179,6 +179,28 @@
   .dup-item:last-child{border-bottom:none;}
   .player-input-row{display:flex;gap:8px;margin-bottom:8px;}
   .player-input-row input{flex:1;}
+  .round-checkbox{
+    appearance:none;-webkit-appearance:none;
+    width:26px;height:26px;min-width:26px;border-radius:50%;
+    border:2px solid var(--brown);background:var(--white);
+    cursor:pointer;margin:0;flex-shrink:0;
+    transition:background .15s ease, border-color .15s ease;
+  }
+  .round-checkbox:checked{background:var(--brown);border-color:var(--brown-dark);}
+  .player-roster-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;}
+  .player-roster-item{
+    display:flex;align-items:center;gap:10px;
+    background:var(--bg);border:1px solid #e3ddc9;border-radius:8px;
+    padding:8px 10px 8px 12px;cursor:pointer;
+  }
+  .player-roster-item .name{flex:1;font-weight:500;}
+  .player-roster-item .del-player{
+    background:none;border:none;color:var(--danger);cursor:pointer;
+    font-size:16px;padding:4px 6px;flex-shrink:0;
+  }
+  .player-add-row{display:flex;gap:8px;margin-bottom:6px;}
+  .player-add-row input{flex:1;}
+  .joker-caption{margin:0;text-align:center;}
 .site-qr{
   position:fixed;
   left:20px;
@@ -274,6 +296,27 @@ function loadLists(){
   return lists;
 }
 function saveLists(lists){ localStorage.setItem(LS_LISTS, JSON.stringify(lists)); }
+
+/* ---------- Roster de joueurs (persiste d'une partie à l'autre) ---------- */
+const LS_PLAYERS = 'avv.players';
+function loadRoster(){
+  try{ const r = JSON.parse(localStorage.getItem(LS_PLAYERS)); return Array.isArray(r) ? r : []; }
+  catch(e){ return []; }
+}
+function saveRoster(names){ localStorage.setItem(LS_PLAYERS, JSON.stringify(names)); }
+function addToRoster(name){
+  const n = (name||'').trim();
+  if(!n) return null;
+  const roster = loadRoster();
+  const existing = roster.find(r=>r.toLowerCase()===n.toLowerCase());
+  if(existing) return existing;
+  roster.push(n);
+  saveRoster(roster);
+  return n;
+}
+function removeFromRoster(name){
+  saveRoster(loadRoster().filter(r=>r!==name));
+}
 
 function loadGame(){
   try{ return JSON.parse(localStorage.getItem(LS_GAME)); }catch(e){ return null; }
@@ -899,12 +942,14 @@ function renderConfig(app){
     let initListIds = pre.listIds ? pre.listIds.slice() : (pre.listId ? [pre.listId] : (lists[0] ? [lists[0].id] : []));
     initListIds = initListIds.filter(id=>lists.some(l=>l.id===id));
     App._configState = {
-      players: pre.players && pre.players.length ? pre.players.slice() : ['',''],
+      selected: pre.players && pre.players.length ? pre.players.slice() : [],
       listIds: initListIds,
       sansRemise: !!pre.sansRemise,
       jokersMax: pre.jokersMax || 0,
       order: pre.order === 'chain' ? 'chain' : 'random',
-      progressif: !!pre.progressif
+      // Progressif coché par défaut dès qu'il est proposé (multi-listes, hardness différents, sans remise) ;
+      // sauf si on revient d'une partie précédente qui avait explicitement un réglage (Changer les joueurs).
+      progressif: App.configPrefill ? !!pre.progressif : true
     };
   }
   const cs = App._configState;
@@ -919,23 +964,63 @@ function renderConfig(app){
 
   const card = el('div',{class:'card'});
   card.appendChild(el('h2',{text:'Joueurs'}));
-  const playersWrap = el('div',{});
-  cs.players.forEach((name, i)=>{
-    const row = el('div',{class:'player-input-row'});
-    const input = el('input',{attrs:{type:'text',placeholder:`Prénom ${i+1}`},value:name});
-    input.addEventListener('input', e=>{ cs.players[i] = e.target.value; syncLaunchButton(); });
-    row.appendChild(input);
-    if(cs.players.length>2){
-      row.appendChild(el('button',{class:'btn btn-danger',text:'✕',on:{click:()=>{
-        cs.players.splice(i,1); render();
-      }}}));
+  card.appendChild(el('p',{class:'small',attrs:{style:'margin-top:-8px;margin-bottom:12px;'},text:'Coche les prénoms qui jouent ce soir. La liste est mémorisée d\'une partie à l\'autre.'}));
+
+  const roster = loadRoster();
+  // Nettoyage défensif : un prénom sélectionné mais retiré du roster ailleurs ne doit pas rester coché.
+  cs.selected = cs.selected.filter(n=>roster.includes(n));
+
+  if(roster.length===0){
+    card.appendChild(el('p',{class:'small',text:'Aucun prénom enregistré pour l\'instant. Ajoute les premiers joueurs ci-dessous.'}));
+  } else {
+    const rosterList = el('div',{class:'player-roster-list'});
+    roster.forEach(name=>{
+      const isChecked = cs.selected.includes(name);
+      const row = el('label',{class:'player-roster-item'});
+      const cb = el('input',{class:'round-checkbox',attrs:{type:'checkbox'}});
+      cb.checked = isChecked;
+      cb.addEventListener('change', e=>{
+        if(e.target.checked){
+          if(cs.selected.length>=15){ e.target.checked=false; showToast('15 joueurs maximum par partie.'); return; }
+          cs.selected.push(name);
+        } else {
+          cs.selected = cs.selected.filter(n=>n!==name);
+        }
+        syncLaunchButton();
+      });
+      row.appendChild(cb);
+      row.appendChild(el('span',{class:'name',text:name}));
+      const delBtn = el('button',{class:'del-player',text:'✕',attrs:{type:'button',title:'Supprimer ce prénom de la liste'}});
+      delBtn.addEventListener('click', e=>{
+        e.preventDefault(); e.stopPropagation();
+        if(confirm(`Supprimer "${name}" de la liste des joueurs ? Cette action est définitive.`)){
+          removeFromRoster(name);
+          cs.selected = cs.selected.filter(n=>n!==name);
+          render();
+        }
+      });
+      row.appendChild(delBtn);
+      rosterList.appendChild(row);
+    });
+    card.appendChild(rosterList);
+  }
+
+  const addRow = el('div',{class:'player-add-row'});
+  const addInput = el('input',{attrs:{type:'text',placeholder:'Nouveau prénom'}});
+  function doAddPlayer(){
+    const n = addToRoster(addInput.value);
+    if(!n) return;
+    if(!cs.selected.includes(n)){
+      if(cs.selected.length>=15){ showToast('15 joueurs maximum par partie.'); }
+      else cs.selected.push(n);
     }
-    playersWrap.appendChild(row);
-  });
-  card.appendChild(playersWrap);
-  card.appendChild(el('button',{class:'btn btn-ghost',text:'+ Ajouter un joueur',disabled:cs.players.length>=15,on:{click:()=>{
-    cs.players.push(''); render();
-  }}}));
+    addInput.value = '';
+    render();
+  }
+  addInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doAddPlayer(); } });
+  addRow.appendChild(addInput);
+  addRow.appendChild(el('button',{class:'btn btn-ghost',text:'+ Ajouter',attrs:{type:'button'},on:{click:doAddPlayer}}));
+  card.appendChild(addRow);
   app.appendChild(card);
 
   const card2 = el('div',{class:'card'});
@@ -966,6 +1051,10 @@ function renderConfig(app){
   checkboxRow.appendChild(document.createTextNode('Sans remise'));
   checkboxRow.appendChild(buildRemiseInfo());
   card2.appendChild(checkboxRow);
+  card2.appendChild(el('p',{class:'small',attrs:{style:'margin:2px 0 0;'},text: cs.sansRemise
+    ? 'Activé : chaque question ne sort qu\'une seule fois pour toute la partie, tous joueurs confondus.'
+    : 'Par défaut (décoché) = avec remise : une question déjà tombée peut retomber sur un autre joueur, mais jamais deux fois sur le même joueur.'
+  }));
 
   const selectedListsForHardness = cs.listIds.map(id=>lists.find(l=>l.id===id)).filter(Boolean);
   const distinctHardness = new Set(selectedListsForHardness.map(l=>l.hardness||3)).size;
@@ -1016,14 +1105,13 @@ function renderConfig(app){
   if(App.dedupModal) renderDedupModal(app);
 
   function syncLaunchButton(){
-    const validPlayers = cs.players.filter(p=>p.trim().length>0).length;
     const btn = document.getElementById('launch-btn');
-    if(btn) btn.disabled = !(validPlayers>=2 && cs.listIds.length>0);
+    if(btn) btn.disabled = !(cs.selected.length>=2 && cs.listIds.length>0);
   }
   syncLaunchButton();
 
   function launchGame(){
-    const names = cs.players.map(p=>p.trim()).filter(Boolean);
+    const names = cs.selected.slice();
     if(names.length<2 || cs.listIds.length===0) return;
     const allLists = loadLists();
     const selectedLists = cs.listIds.map(id=>allLists.find(l=>l.id===id)).filter(Boolean);
@@ -1175,13 +1263,13 @@ function renderGame(app){
     if(game.jokersMax>0){
       const used = (game.jokersUsed && game.jokersUsed[game.currentPlayerIndex]) || 0;
       const remaining = game.jokersMax - used;
-      const hasCharges = remaining>0;
-      const hasAlternative = categoryAvailable(game, game.currentCategory, game.currentPlayerIndex);
-      const canJoker = hasCharges && hasAlternative;
-      let jokerTitle = '';
-      if(!hasCharges) jokerTitle = 'Plus de joker disponible pour ce joueur.';
-      else if(!hasAlternative) jokerTitle = 'Aucune autre question disponible dans cette catégorie.';
-      row.appendChild(el('button',{class:'btn btn-joker btn-big',attrs:{style:'flex:1;', title:jokerTitle},text:`🃏 Joker (${remaining})`,disabled:!canJoker,on:{click:useJoker}}));
+      const canJoker = remaining>0;
+      const jokerWrap = el('div',{attrs:{style:'flex:1;display:flex;flex-direction:column;gap:4px;'}});
+      jokerWrap.appendChild(el('button',{class:'btn btn-joker btn-big btn-block',text:`🃏 Joker (${remaining})`,disabled:!canJoker,on:{click:useJoker}}));
+      if(!canJoker){
+        jokerWrap.appendChild(el('p',{class:'small joker-caption',text:`${playerName} n'a plus de joker pour cette partie.`}));
+      }
+      row.appendChild(jokerWrap);
     }
     app.appendChild(row);
   }
@@ -1239,10 +1327,6 @@ function renderGame(app){
     render();
   }
 
-  function recentlyClosedPopup(g){
-    return g.jokerPopupClosedAt && (Date.now() - g.jokerPopupClosedAt) < 400;
-  }
-
   function useJoker(){
     const g = loadGame();
     if(recentlyClosedPopup(g)) return;
@@ -1250,31 +1334,11 @@ function renderGame(app){
     if(!g.jokersUsed) g.jokersUsed = g.players.map(()=>0);
     const used = g.jokersUsed[g.currentPlayerIndex] || 0;
     if(used>=g.jokersMax) return;
-    const cat = g.currentCategory;
-    if(!categoryAvailable(g, cat, g.currentPlayerIndex)) return;
-    incrementSkipCount(g.currentItem, cat);
+    // Le joker passe la question et le tour : on ne retire plus une nouvelle question au même joueur.
+    incrementSkipCount(g.currentItem, g.currentCategory);
     g.jokersUsed[g.currentPlayerIndex] = used + 1;
-    performDraw(g, cat, g.currentPlayerIndex);
     const remaining = g.jokersMax - g.jokersUsed[g.currentPlayerIndex];
     g.jokerPopup = {name: g.players[g.currentPlayerIndex], remaining};
-    saveGame(g);
-    render();
-  }
-
-  function goNext(){
-    const g = loadGame();
-    if(recentlyClosedPopup(g)) return;
-    if(g.justExhausted){
-      const other = g.justExhausted==='action' ? 'verite' : 'action';
-      g.exhaustedCategory = g.justExhausted;
-      g.otherHasStock = categoryAvailable(g, other, g.currentPlayerIndex);
-      g.justExhausted = null;
-      g.phase = 'exhausted';
-      saveGame(g);
-      render();
-      return;
-    }
-    advanceTurn(g);
     saveGame(g);
     render();
   }
@@ -1320,14 +1384,45 @@ function renderJokerPopup(app, game){
   const overlay = el('div',{class:'modal-overlay'});
   const modal = el('div',{class:'modal joker-popup-modal'});
   modal.appendChild(el('button',{class:'joker-popup-close',text:'✕',on:{click:closeJokerPopup}}));
-  modal.appendChild(el('div',{class:'joker-popup-text',text:`${p.name}, il te reste ${p.remaining} joker${p.remaining>1?'s':''} !`}));
+  modal.appendChild(el('div',{class:'joker-popup-text',text:`${p.name}, il te reste ${p.remaining} joker${p.remaining>1?'s':''} ! Tour suivant...`}));
   overlay.appendChild(modal);
   app.appendChild(overlay);
 }
 
+// Logique commune de passage au tour suivant (bouton "Fait/Répondu" ET fermeture du popup joker),
+// y compris la bascule vers l'écran "catégorie épuisée" si besoin.
+function advanceGame(g){
+  if(g.justExhausted){
+    const other = g.justExhausted==='action' ? 'verite' : 'action';
+    g.exhaustedCategory = g.justExhausted;
+    g.otherHasStock = categoryAvailable(g, other, g.currentPlayerIndex);
+    g.justExhausted = null;
+    g.phase = 'exhausted';
+    return;
+  }
+  advanceTurn(g);
+}
+
+function recentlyClosedPopup(g){
+  return g.jokerPopupClosedAt && (Date.now() - g.jokerPopupClosedAt) < 400;
+}
+
+function goNext(){
+  const g = loadGame();
+  if(recentlyClosedPopup(g)) return;
+  advanceGame(g);
+  saveGame(g);
+  render();
+}
+
 function closeJokerPopup(){
   const g = loadGame();
-  if(g){ g.jokerPopup = null; g.jokerPopupClosedAt = Date.now(); saveGame(g); }
+  if(g){
+    g.jokerPopup = null;
+    advanceGame(g);
+    g.jokerPopupClosedAt = Date.now();
+    saveGame(g);
+  }
   render();
 }
 
